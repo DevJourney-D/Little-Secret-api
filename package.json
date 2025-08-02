@@ -8,7 +8,6 @@
     "dev": "node index.js",
     "test": "node test-endpoints.js",
     "test:local": "API_URL=http://localhost:3001 node test-endpoints.js",
-    "build": "echo 'No build step required for Node.js API'",
     "vercel-deploy": "vercel --prod"
   },
   "repository": {
