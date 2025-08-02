@@ -5,13 +5,13 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 // Import Controllers
-const UserController = require('./controllers/UserController');
-const DiaryController = require('./controllers/DiaryController');
-const ChatController = require('./controllers/ChatController');
-const TodoController = require('./controllers/TodoController');
-const PomodoroController = require('./controllers/PomodoroController');
-const MathController = require('./controllers/MathController');
-const NekoChatController = require('./controllers/NekoChatController');
+const UserController = require('../controllers/UserController');
+const DiaryController = require('../controllers/DiaryController');
+const ChatController = require('../controllers/ChatController');
+const TodoController = require('../controllers/TodoController');
+const PomodoroController = require('../controllers/PomodoroController');
+const MathController = require('../controllers/MathController');
+const NekoChatController = require('../controllers/NekoChatController');
 
 // Initialize Controllers
 const userController = new UserController();
