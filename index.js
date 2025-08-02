@@ -26,9 +26,22 @@ const app = express();
 
 // Middleware Configuration
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? process.env.ALLOWED_ORIGINS?.split(',') || ['https://little-secret.vercel.app', 'https://neko-u.vercel.app', 'https://our-little-secret-app.vercel.app']
-        : ['http://localhost:8080', 'http://127.0.0.1:8080'],
+    origin: process.env.NODE_ENV === 'production'
+        ? process.env.ALLOWED_ORIGINS?.split(',') || [
+            'https://little-secret.vercel.app', 
+            'https://neko-u.vercel.app', 
+            'https://our-little-secret-app.vercel.app',
+            'http://127.0.0.1:5500',
+            'http://localhost:5500',
+            'http://127.0.0.1:8080',
+            'http://localhost:8080'
+          ]
+        : [
+            'http://localhost:8080', 
+            'http://127.0.0.1:8080',
+            'http://localhost:5500',
+            'http://127.0.0.1:5500'
+          ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -284,7 +297,7 @@ dashboardRouter.use('/:userId/*', userController.authorizeOwner.bind(userControl
 dashboardRouter.get('/:userId/dashboard', async (req, res) => {
     try {
         const { userId } = req.params;
-        
+
         // Get all dashboard data in parallel
         const [
             userResult,
@@ -342,7 +355,7 @@ app.use('/api/*', (req, res) => {
 // Global Error Handler
 app.use((error, req, res, next) => {
     console.error('Global Error:', error);
-    
+
     res.status(error.status || 500).json({
         success: false,
         message: error.message || 'Internal Server Error',

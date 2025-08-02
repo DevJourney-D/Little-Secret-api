@@ -26,9 +26,7 @@ const app = express();
 
 // Middleware Configuration
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-        ? process.env.ALLOWED_ORIGINS?.split(',') || ['https://little-secret.vercel.app', 'https://neko-u.vercel.app', 'https://our-little-secret-app.vercel.app']
-        : ['http://localhost:8080', 'http://127.0.0.1:8080'],
+    origin: true, // Allow all origins during development
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
