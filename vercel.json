@@ -3,16 +3,9 @@
   "functions": {
     "index.js": {
       "maxDuration": 30
-    },
-    "api/users/**/*.js": {
-      "maxDuration": 30
     }
   },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/index.js"
-    },
     {
       "source": "/(.*)",
       "destination": "/index.js"
