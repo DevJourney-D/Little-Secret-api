@@ -4,6 +4,9 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
+// Import UUID Validation Middleware
+const { validateUUID, validateMultipleUUIDs } = require('./middleware/uuidValidation');
+
 // Import Controllers
 const UserController = require('./controllers/UserController');
 const DiaryController = require('./controllers/DiaryController');
@@ -96,7 +99,7 @@ userRouter.get('/email/:email', userController.getUserByEmail.bind(userControlle
 userRouter.get('/username/:username', userController.getUserByUsername.bind(userController));
 
 // Authentication middleware for protected routes
-userRouter.use('/:userId/*', userController.authenticate.bind(userController));
+userRouter.use('/:userId/*', validateUUID('userId'), userController.authenticate.bind(userController));
 userRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
 // Protected user management
@@ -124,7 +127,7 @@ app.use('/api/users', userRouter);
 const diaryRouter = express.Router();
 
 // Authentication middleware
-diaryRouter.use('/:userId/*', userController.authenticate.bind(userController));
+diaryRouter.use('/:userId/*', validateUUID('userId'), userController.authenticate.bind(userController));
 diaryRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
 // Diary CRUD
@@ -135,12 +138,12 @@ diaryRouter.get('/:userId/diaries/recent', diaryController.getRecentDiaries.bind
 diaryRouter.get('/:userId/diaries/stats', diaryController.getDiaryStats.bind(diaryController));
 diaryRouter.get('/:userId/diaries/export', diaryController.exportDiaries.bind(diaryController));
 
-diaryRouter.get('/:userId/diaries/:diaryId', diaryController.getDiaryById.bind(diaryController));
-diaryRouter.put('/:userId/diaries/:diaryId', diaryController.updateDiary.bind(diaryController));
-diaryRouter.delete('/:userId/diaries/:diaryId', diaryController.deleteDiary.bind(diaryController));
+diaryRouter.get('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.getDiaryById.bind(diaryController));
+diaryRouter.put('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.updateDiary.bind(diaryController));
+diaryRouter.delete('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.deleteDiary.bind(diaryController));
 
 // Diary interactions
-diaryRouter.post('/:userId/diaries/:diaryId/reaction', diaryController.addReaction.bind(diaryController));
+diaryRouter.post('/:userId/diaries/:diaryId/reaction', validateUUID('diaryId'), diaryController.addReaction.bind(diaryController));
 
 // Diary filtering
 diaryRouter.get('/:userId/diaries/category/:category', diaryController.getDiariesByCategory.bind(diaryController));
@@ -377,7 +380,22 @@ app.use((error, req, res, next) => {
 });
 
 // For Vercel serverless functions
-module.exports = app;
+module.exports = (req, res) => {
+    // Set CORS headers for all requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+    }
+    
+    // Process request through Express app
+    return app(req, res);
+};
 
 // For local development
 if (require.main === module) {
