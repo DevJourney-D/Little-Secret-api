@@ -80,6 +80,19 @@ app.get('/', (req, res) => {
     });
 });
 
+// Health Check - API route (MOVED TO TOP)
+app.get('/api/health', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json({
+        success: true,
+        message: 'Neko U API Health Check! 🐱💕',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        path: req.path,
+        method: req.method
+    });
+});
+
 // Simple test route
 app.get('/test', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -87,17 +100,6 @@ app.get('/test', (req, res) => {
         success: true,
         message: 'Test endpoint working!',
         timestamp: new Date().toISOString()
-    });
-});
-
-// Health Check - API route
-app.get('/api/health', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.json({
-        success: true,
-        message: 'Neko U API is running! 🐱💕',
-        timestamp: new Date().toISOString(),
-        version: '1.0.0'
     });
 });
 
