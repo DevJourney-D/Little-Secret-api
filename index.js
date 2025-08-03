@@ -297,6 +297,8 @@ app.post('/api/test-login-direct', async (req, res) => {
                 message: 'Username และ password จำเป็น'
             });
         }
+
+        
         
         const connectionString = 'postgresql://postgres.cnvrikxkxrdeuofbbwkk:062191Komkem@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
         
