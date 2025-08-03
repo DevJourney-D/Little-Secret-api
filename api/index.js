@@ -69,16 +69,30 @@ app.use((req, res, next) => {
 
 // Health Check - Root route for Vercel
 app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
     res.json({
         success: true,
         message: 'Neko U API is running! 🐱💕',
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.0.0',
+        path: req.path,
+        method: req.method
+    });
+});
+
+// Simple test route
+app.get('/test', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json({
+        success: true,
+        message: 'Test endpoint working!',
+        timestamp: new Date().toISOString()
     });
 });
 
 // Health Check - API route
 app.get('/api/health', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
     res.json({
         success: true,
         message: 'Neko U API is running! 🐱💕',
@@ -359,7 +373,25 @@ app.use('/api', dashboardRouter);
 // ERROR HANDLING
 // ===============================
 
-// 404 Handler
+// Catch-all route for debugging
+app.get('*', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.status(200).json({
+        success: false,
+        message: 'Route not found, but API is working',
+        path: req.path,
+        method: req.method,
+        available_routes: [
+            'GET /',
+            'GET /test', 
+            'GET /api/health',
+            'POST /api/users',
+            'POST /api/users/login'
+        ]
+    });
+});
+
+// 404 Handler for API routes only
 app.use('/api/*', (req, res) => {
     res.status(404).json({
         success: false,
