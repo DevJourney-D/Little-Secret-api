@@ -151,6 +151,47 @@ app.get('/api/test-connection', async (req, res) => {
     }
 });
 
+// Test PostgreSQL direct connection
+app.get('/api/test-postgres', async (req, res) => {
+    try {
+        const { Client } = require('pg');
+        
+        // Parse the connection string you provided
+        const connectionString = 'postgresql://postgres.cnvrikxkxrdeuofbbwkk:062191Komkem@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
+        
+        const client = new Client({
+            connectionString: connectionString
+        });
+        
+        await client.connect();
+        console.log('PostgreSQL connected successfully');
+        
+        // Test query
+        const result = await client.query('SELECT current_database(), version()');
+        
+        await client.end();
+        
+        res.json({
+            success: true,
+            message: 'PostgreSQL connection test successful',
+            database: result.rows[0].current_database,
+            version: result.rows[0].version.substring(0, 50) + '...'
+        });
+        
+    } catch (error) {
+        console.error('PostgreSQL test error:', error);
+        res.json({
+            success: false,
+            message: 'PostgreSQL connection failed',
+            error: {
+                message: error.message,
+                name: error.name,
+                code: error.code
+            }
+        });
+    }
+});
+
 // ===============================
 // USER ROUTES
 // ===============================
