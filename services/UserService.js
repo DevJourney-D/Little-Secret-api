@@ -31,15 +31,15 @@ class UserService {
                     email: userData.email,
                     username: userData.username,
                     password: hashedPassword, // บันทึก hashed password
-                    first_name: userData.first_name,
-                    last_name: userData.last_name,
-                    display_name: userData.display_name || `${userData.first_name} ${userData.last_name}`,
+                    first_name: userData.first_name || userData.firstName,
+                    last_name: userData.last_name || userData.lastName,
+                    display_name: userData.display_name || userData.displayName || userData.username,
                     nickname: userData.nickname,
                     gender: userData.gender,
                     phone: userData.phone,
-                    birth_date: userData.birth_date,
+                    birth_date: userData.birth_date || userData.birthDate,
                     bio: userData.bio,
-                    avatar_url: userData.avatar_url,
+                    avatar_url: userData.avatar_url || userData.avatarUrl,
                     timezone: userData.timezone || 'Asia/Bangkok',
                     language: userData.language || 'th'
                 }])
