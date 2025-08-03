@@ -413,8 +413,13 @@ app.use((error, req, res, next) => {
     });
 });
 
-// For Vercel serverless functions
-module.exports = app;
+// For Vercel serverless functions - Export handler function
+module.exports = (req, res) => {
+    return app(req, res);
+};
+
+// Export app for testing
+module.exports.app = app;
 
 // For local development
 if (require.main === module) {
