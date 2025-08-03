@@ -97,27 +97,54 @@ app.get('/api/health', (req, res) => {
 // Test endpoint
 app.get('/api/test-supabase', async (req, res) => {
     try {
+        console.log('Testing Supabase connection...');
+        console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+        console.log('SUPABASE_SERVICE_ROLE_KEY length:', process.env.SUPABASE_SERVICE_ROLE_KEY?.length);
+        
         const { createClient } = require('@supabase/supabase-js');
         const supabase = createClient(
             process.env.SUPABASE_URL,
             process.env.SUPABASE_SERVICE_ROLE_KEY
         );
         
-        // ทดสอบ connection
-        const { data, error } = await supabase.from('users').select('count').limit(1);
+        console.log('Supabase client created, testing connection...');
+        
+        // ทดสอบ connection ที่ง่ายขึ้น
+        const { data, error } = await supabase
+            .from('users')
+            .select('id')
+            .limit(1);
+        
+        console.log('Query result:', { data, error });
         
         res.json({
             success: true,
             message: 'Supabase connection test',
             connection_status: error ? 'Failed' : 'Success',
-            error: error ? error.message : null,
-            data
+            error: error ? {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint
+            } : null,
+            data_count: data ? data.length : 0,
+            environment_check: {
+                url_set: !!process.env.SUPABASE_URL,
+                key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+                url_starts_with: process.env.SUPABASE_URL?.substring(0, 25),
+                key_starts_with: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20)
+            }
         });
     } catch (error) {
+        console.error('Supabase test error:', error);
         res.json({
             success: false,
             message: 'Supabase connection failed',
-            error: error.message
+            error: {
+                message: error.message,
+                name: error.name,
+                stack: error.stack
+            }
         });
     }
 });
