@@ -76,20 +76,46 @@ class UserService {
     // ดึงข้อมูลผู้ใช้ตาม ID
     async getUserById(userId) {
         try {
-            const { data, error } = await this.supabase
+            // ดึงข้อมูลผู้ใช้พื้นฐานก่อน
+            const { data: userData, error: userError } = await this.supabase
                 .from('users')
-                .select(`
-                    *,
-                    partner:partner_id(id, first_name, last_name, display_name, avatar_url, is_online, last_seen),
-                    user_preferences(*),
-                    user_stats(*)
-                `)
+                .select('*')
                 .eq('id', userId)
                 .single();
 
-            if (error) throw error;
-            return { success: true, data };
+            if (userError) throw userError;
+            
+            // ดึงข้อมูล partner แยก (ถ้ามี)
+            let partnerData = null;
+            if (userData.partner_id) {
+                const { data: partner, error: partnerError } = await this.supabase
+                    .from('users')
+                    .select('id, first_name, last_name, display_name, avatar_url, is_online, last_seen')
+                    .eq('id', userData.partner_id)
+                    .single();
+                
+                if (!partnerError) {
+                    partnerData = partner;
+                }
+            }
+            
+            // ดึงข้อมูล preferences แยก (ถ้ามี)
+            const { data: preferences } = await this.supabase
+                .from('user_preferences')
+                .select('*')
+                .eq('user_id', userId)
+                .single();
+
+            // รวมข้อมูล
+            const result = {
+                ...userData,
+                partner: partnerData,
+                user_preferences: preferences
+            };
+
+            return { success: true, data: result };
         } catch (error) {
+            console.error('getUserById error:', error);
             return { success: false, error: error.message };
         }
     }

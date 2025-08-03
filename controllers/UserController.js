@@ -446,20 +446,37 @@ class UserController {
 
             const token = authHeader.split(' ')[1];
             
-            // ตรวจสอบ token กับ Supabase
-            const { data: { user }, error } = await this.userService.supabase.auth.getUser(token);
+            // ตรวจสอบ JWT token
+            const jwt = require('jsonwebtoken');
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
             
-            if (error || !user) {
+            // ดึงข้อมูลผู้ใช้จากฐานข้อมูล
+            const userResult = await this.userService.getUserById(decoded.userId);
+            
+            if (!userResult.success) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'ผู้ใช้ไม่พบในระบบ'
+                });
+            }
+
+            // เพิ่มข้อมูลผู้ใช้ใน request
+            req.user = userResult.data;
+            req.userId = decoded.userId;
+            next();
+        } catch (error) {
+            if (error.name === 'JsonWebTokenError') {
                 return res.status(401).json({
                     success: false,
                     message: 'Access Token ไม่ถูกต้อง'
                 });
             }
-
-            // เพิ่มข้อมูลผู้ใช้ใน request
-            req.user = user;
-            next();
-        } catch (error) {
+            if (error.name === 'TokenExpiredError') {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Access Token หมดอายุแล้ว'
+                });
+            }
             res.status(401).json({
                 success: false,
                 message: 'เกิดข้อผิดพลาดในการตรวจสอบ Access Token',
@@ -468,21 +485,21 @@ class UserController {
         }
     }
 
-    // Middleware สำหรับตรวจสอบสิทธิ์เจ้าของ
+        // Middleware สำหรับตรวจสอบสิทธิ์เจ้าของ
     async authorizeOwner(req, res, next) {
         try {
             const { userId } = req.params;
             
-            if (req.user.id !== userId) {
+            if (req.userId !== userId) {
                 return res.status(403).json({
                     success: false,
                     message: 'ไม่มีสิทธิ์เข้าถึงข้อมูลนี้'
                 });
             }
-            
+
             next();
         } catch (error) {
-            res.status(403).json({
+            res.status(500).json({
                 success: false,
                 message: 'เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์',
                 error: error.message
