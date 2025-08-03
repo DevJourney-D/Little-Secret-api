@@ -354,16 +354,19 @@ class UserController {
     async connectWithPartner(req, res) {
         try {
             const { userId } = req.params;
-            const { partnerCode } = req.body;
+            const { partnerCode, partner_code } = req.body;
             
-            if (!partnerCode) {
+            // รับทั้ง partnerCode และ partner_code
+            const code = partnerCode || partner_code;
+            
+            if (!code) {
                 return res.status(400).json({
                     success: false,
                     message: 'กรุณาใส่รหัสคู่รัก'
                 });
             }
 
-            const result = await this.userService.connectWithPartner(userId, partnerCode);
+            const result = await this.userService.connectWithPartner(userId, code);
             
             if (result.success) {
                 // บันทึก activity log
