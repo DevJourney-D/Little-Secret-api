@@ -99,6 +99,10 @@ class UserService {
     // เข้าสู่ระบบด้วย username และ password
     async loginUser(username, password) {
         try {
+            console.log('Login attempt for:', username);
+            console.log('Supabase URL:', process.env.SUPABASE_URL ? 'Set' : 'Missing');
+            console.log('Service Role Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing');
+            
             // ค้นหาผู้ใช้ด้วย username
             const { data: user, error: userError } = await this.supabase
                 .from('users')
@@ -106,8 +110,10 @@ class UserService {
                 .eq('username', username)
                 .single();
 
+            console.log('User query result:', { user, userError });
+
             if (userError || !user) {
-                return { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+                return { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', debug: { userError } };
             }
 
             // ตรวจสอบรหัสผ่าน (ในกรณีนี้เราเปรียบเทียบ plain text)
@@ -139,7 +145,8 @@ class UserService {
                 } 
             };
         } catch (error) {
-            return { success: false, error: error.message };
+            console.error('Login error:', error);
+            return { success: false, error: error.message, debug: error };
         }
     }
 

@@ -89,7 +89,12 @@ app.get('/api/health', (req, res) => {
         timestamp: new Date().toISOString(),
         version: '1.0.0',
         path: req.path,
-        method: req.method
+        method: req.method,
+        env_check: {
+            supabase_url: process.env.SUPABASE_URL ? 'Set' : 'Missing',
+            supabase_key: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing',
+            jwt_secret: process.env.JWT_SECRET ? 'Set' : 'Missing'
+        }
     });
 });
 
