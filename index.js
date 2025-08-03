@@ -265,10 +265,6 @@ app.post('/api/test-create-user-direct', async (req, res) => {
             success: true,
             message: 'User created successfully via direct PostgreSQL',
             data: result.rows[0]
-        res.json({
-            success: true,
-            message: 'User created successfully via direct PostgreSQL',
-            data: result.rows[0]
         });
         
     } catch (error) {
