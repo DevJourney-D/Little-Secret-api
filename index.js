@@ -95,55 +95,57 @@ app.get('/api/health', (req, res) => {
 });
 
 // Test endpoint
-app.get('/api/test-supabase', async (req, res) => {
+app.get('/api/test-connection', async (req, res) => {
     try {
-        console.log('Testing Supabase connection...');
-        console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
-        console.log('SUPABASE_SERVICE_ROLE_KEY length:', process.env.SUPABASE_SERVICE_ROLE_KEY?.length);
+        console.log('Testing basic HTTP connection to Supabase...');
         
-        const { createClient } = require('@supabase/supabase-js');
-        const supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-        );
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const apiKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         
-        console.log('Supabase client created, testing connection...');
+        if (!supabaseUrl || !apiKey) {
+            return res.json({
+                success: false,
+                message: 'Missing environment variables',
+                url_set: !!supabaseUrl,
+                key_set: !!apiKey
+            });
+        }
         
-        // ทดสอบ connection ที่ง่ายขึ้น
-        const { data, error } = await supabase
-            .from('users')
-            .select('id')
-            .limit(1);
+        // ทดสอบด้วย native fetch แทน Supabase client
+        const response = await fetch(`${supabaseUrl}/rest/v1/users?select=id&limit=1`, {
+            method: 'GET',
+            headers: {
+                'apikey': apiKey,
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
         
-        console.log('Query result:', { data, error });
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        
+        const data = await response.text();
+        console.log('Response data:', data);
         
         res.json({
             success: true,
-            message: 'Supabase connection test',
-            connection_status: error ? 'Failed' : 'Success',
-            error: error ? {
-                message: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint
-            } : null,
-            data_count: data ? data.length : 0,
-            environment_check: {
-                url_set: !!process.env.SUPABASE_URL,
-                key_set: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-                url_starts_with: process.env.SUPABASE_URL?.substring(0, 25),
-                key_starts_with: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20)
-            }
+            message: 'Direct HTTP test to Supabase',
+            status: response.status,
+            status_text: response.statusText,
+            headers: Object.fromEntries(response.headers),
+            data_preview: data.substring(0, 200),
+            connection_status: response.ok ? 'Success' : 'Failed'
         });
+        
     } catch (error) {
-        console.error('Supabase test error:', error);
+        console.error('Connection test error:', error);
         res.json({
             success: false,
-            message: 'Supabase connection failed',
+            message: 'Direct HTTP connection failed',
             error: {
                 message: error.message,
                 name: error.name,
-                stack: error.stack
+                cause: error.cause
             }
         });
     }
