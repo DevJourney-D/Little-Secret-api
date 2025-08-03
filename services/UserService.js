@@ -48,8 +48,8 @@ class UserService {
 
             if (error) throw error;
 
-            // สร้าง user preferences อัตโนมัติ
-            await this.createUserPreferences(data.id);
+            // TODO: สร้าง user preferences อัตโนมัติ (ปิดไว้ก่อนเพื่อ debug)
+            // await this.createUserPreferences(data.id);
 
             // ลบรหัสผ่านออกจาก response
             const { password: _, ...userWithoutPassword } = data;
@@ -262,7 +262,15 @@ class UserService {
                     daily_greeting_enabled: true,
                     theme: 'default',
                     language: 'th',
-                    timezone: 'Asia/Bangkok'
+                    timezone: 'Asia/Bangkok',
+                    dark_mode: false,
+                    font_size: 'normal',
+                    auto_save: true,
+                    privacy_mode: false,
+                    email_notifications: true,
+                    push_notifications: true,
+                    diary_auto_backup: true,
+                    location_sharing: false
                 }])
                 .select()
                 .single();
