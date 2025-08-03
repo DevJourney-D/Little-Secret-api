@@ -151,8 +151,8 @@ app.get('/api/test-connection', async (req, res) => {
     }
 });
 
-// Test PostgreSQL direct connection
-app.get('/api/test-postgres', async (req, res) => {
+// Test PostgreSQL direct connection with users table
+app.get('/api/test-users-table', async (req, res) => {
     try {
         const { Client } = require('pg');
         
@@ -166,23 +166,33 @@ app.get('/api/test-postgres', async (req, res) => {
         await client.connect();
         console.log('PostgreSQL connected successfully');
         
-        // Test query
-        const result = await client.query('SELECT current_database(), version()');
+        // Test if users table exists and has the right structure
+        const tableCheck = await client.query(`
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns 
+            WHERE table_name = 'users' 
+            ORDER BY ordinal_position;
+        `);
+        
+        // Count existing users
+        const userCount = await client.query('SELECT COUNT(*) as count FROM users');
         
         await client.end();
         
         res.json({
             success: true,
-            message: 'PostgreSQL connection test successful',
-            database: result.rows[0].current_database,
-            version: result.rows[0].version.substring(0, 50) + '...'
+            message: 'Users table test successful',
+            table_exists: tableCheck.rows.length > 0,
+            columns: tableCheck.rows,
+            user_count: parseInt(userCount.rows[0].count),
+            has_password_column: tableCheck.rows.some(col => col.column_name === 'password')
         });
         
     } catch (error) {
-        console.error('PostgreSQL test error:', error);
+        console.error('Users table test error:', error);
         res.json({
             success: false,
-            message: 'PostgreSQL connection failed',
+            message: 'Users table test failed',
             error: {
                 message: error.message,
                 name: error.name,
