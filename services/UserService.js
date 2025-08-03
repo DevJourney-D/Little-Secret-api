@@ -31,8 +31,8 @@ class UserService {
                     email: userData.email,
                     username: userData.username,
                     password: hashedPassword, // บันทึก hashed password
-                    first_name: userData.first_name || userData.firstName,
-                    last_name: userData.last_name || userData.lastName,
+                    first_name: userData.first_name || userData.firstName || userData.displayName?.split(' ')[0] || userData.username,
+                    last_name: userData.last_name || userData.lastName || userData.displayName?.split(' ')[1] || '',
                     display_name: userData.display_name || userData.displayName || userData.username,
                     nickname: userData.nickname,
                     gender: userData.gender,
