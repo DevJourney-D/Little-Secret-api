@@ -14,6 +14,13 @@ class UserService {
     // สร้างผู้ใช้ใหม่
     async createUser(userData) {
         try {
+            console.log('Creating user with data:', userData);
+            
+            // ตรวจสอบ required fields
+            if (!userData.email || !userData.username || !userData.password) {
+                throw new Error('Email, username และ password เป็นข้อมูลที่จำเป็น');
+            }
+
             // สร้าง UUID สำหรับ user ID
             const userId = uuidv4();
             
@@ -23,6 +30,8 @@ class UserService {
                 const saltRounds = 10;
                 hashedPassword = await bcrypt.hash(userData.password, saltRounds);
             }
+
+            console.log('Attempting to insert user with ID:', userId);
 
             const { data, error } = await this.supabase
                 .from('users')
@@ -46,6 +55,8 @@ class UserService {
                 .select()
                 .single();
 
+            console.log('Insert result:', { data, error });
+
             if (error) throw error;
 
             // TODO: สร้าง user preferences อัตโนมัติ (ปิดไว้ก่อนเพื่อ debug)
@@ -55,6 +66,9 @@ class UserService {
             const { password: _, ...userWithoutPassword } = data;
             return { success: true, data: userWithoutPassword };
         } catch (error) {
+            console.error('createUser error:', error);
+            console.error('Error details:', error.message);
+            console.error('Error code:', error.code);
             return { success: false, error: error.message };
         }
     }
