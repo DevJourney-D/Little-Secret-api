@@ -265,6 +265,10 @@ app.post('/api/test-create-user-direct', async (req, res) => {
             success: true,
             message: 'User created successfully via direct PostgreSQL',
             data: result.rows[0]
+        res.json({
+            success: true,
+            message: 'User created successfully via direct PostgreSQL',
+            data: result.rows[0]
         });
         
     } catch (error) {
@@ -277,6 +281,101 @@ app.post('/api/test-create-user-direct', async (req, res) => {
                 name: error.name,
                 code: error.code,
                 detail: error.detail
+            }
+        });
+    }
+});
+
+// Test direct user login via PostgreSQL
+app.post('/api/test-login-direct', async (req, res) => {
+    try {
+        const { Client } = require('pg');
+        const bcrypt = require('bcrypt');
+        const jwt = require('jsonwebtoken');
+        
+        const { username, password } = req.body;
+        
+        if (!username || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username และ password จำเป็น'
+            });
+        }
+        
+        const connectionString = 'postgresql://postgres.cnvrikxkxrdeuofbbwkk:062191Komkem@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
+        
+        const client = new Client({
+            connectionString: connectionString
+        });
+        
+        await client.connect();
+        console.log('Connected to login user');
+        
+        // ค้นหาผู้ใช้
+        const userQuery = `
+            SELECT id, email, username, password, display_name, created_at
+            FROM users 
+            WHERE username = $1
+        `;
+        
+        const userResult = await client.query(userQuery, [username]);
+        
+        if (userResult.rows.length === 0) {
+            await client.end();
+            return res.status(401).json({
+                success: false,
+                message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+            });
+        }
+        
+        const user = userResult.rows[0];
+        
+        // ตรวจสอบรหัสผ่าน
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        
+        if (!isPasswordValid) {
+            await client.end();
+            return res.status(401).json({
+                success: false,
+                message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+            });
+        }
+        
+        // สร้าง JWT Token
+        const token = jwt.sign(
+            { 
+                userId: user.id, 
+                username: user.username,
+                email: user.email 
+            },
+            process.env.JWT_SECRET || 'your-secret-key',
+            { expiresIn: '7d' }
+        );
+        
+        await client.end();
+        
+        // ลบรหัสผ่านออกจาก response
+        const { password: _, ...userWithoutPassword } = user;
+        
+        res.json({
+            success: true,
+            message: 'Login successful via direct PostgreSQL',
+            data: {
+                user: userWithoutPassword,
+                token,
+                login_time: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Direct login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Direct login failed',
+            error: {
+                message: error.message,
+                name: error.name,
+                code: error.code
             }
         });
     }
