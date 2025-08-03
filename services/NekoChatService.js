@@ -1,5 +1,6 @@
 // Neko Chat Service - จัดการ AI Chatbot เนโกะ
 const { createClient } = require('@supabase/supabase-js');
+const { v4: uuidv4 } = require('uuid');
 
 class NekoChatService {
     constructor() {
@@ -183,6 +184,7 @@ class NekoChatService {
             const { data, error } = await this.supabase
                 .from('neko_conversations')
                 .insert([{
+                    id: uuidv4(), // ใช้ UUID
                     user_id: conversationData.user_id,
                     message: conversationData.message,
                     response: conversationData.response,

@@ -1,5 +1,6 @@
 // Diary Service - จัดการไดอารี่
 const { createClient } = require('@supabase/supabase-js');
+const { v4: uuidv4 } = require('uuid');
 
 class DiaryService {
     constructor() {
@@ -15,6 +16,7 @@ class DiaryService {
             const { data, error } = await this.supabase
                 .from('diary_entries')
                 .insert([{
+                    id: uuidv4(), // ใช้ UUID
                     user_id: diaryData.user_id,
                     title: diaryData.title,
                     content: diaryData.content,

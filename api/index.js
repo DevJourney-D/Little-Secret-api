@@ -13,6 +13,9 @@ const PomodoroController = require('../controllers/PomodoroController');
 const MathController = require('../controllers/MathController');
 const NekoChatController = require('../controllers/NekoChatController');
 
+// Import Middleware
+const { validateUUID, validateMultipleUUIDs } = require('../middleware/uuidValidation');
+
 // Initialize Controllers
 const userController = new UserController();
 const diaryController = new DiaryController();
@@ -111,6 +114,62 @@ app.get('/test', (req, res) => {
 // Direct login route (shortcut)
 app.post('/login', userController.loginUser.bind(userController));
 
+// Utility route for updating existing passwords to hashed versions (TEMPORARY)
+app.post('/admin/hash-passwords', async (req, res) => {
+    try {
+        const { adminKey } = req.body;
+        
+        // Simple admin protection
+        if (adminKey !== 'hash-existing-passwords-2024') {
+            return res.status(403).json({ success: false, error: 'Unauthorized' });
+        }
+
+        const bcrypt = require('bcrypt');
+        const { createClient } = require('@supabase/supabase-js');
+        
+        const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+
+        // Get all users with plain text passwords
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, username, password')
+            .not('password', 'is', null);
+
+        if (error) throw error;
+
+        const updates = [];
+        for (const user of users) {
+            if (user.password && !user.password.startsWith('$2b$')) {
+                // Hash the plain text password
+                const hashedPassword = await bcrypt.hash(user.password, 10);
+                updates.push(
+                    supabase
+                        .from('users')
+                        .update({ password: hashedPassword })
+                        .eq('id', user.id)
+                );
+            }
+        }
+
+        await Promise.all(updates);
+
+        res.json({
+            success: true,
+            message: `Updated ${updates.length} passwords to hashed versions`,
+            users_updated: users.length
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // ===============================
 // USER ROUTES
 // ===============================
@@ -123,6 +182,7 @@ userRouter.get('/email/:email', userController.getUserByEmail.bind(userControlle
 userRouter.get('/username/:username', userController.getUserByUsername.bind(userController));
 
 // Authentication middleware for protected routes
+userRouter.use('/:userId/*', validateUUID('userId'));
 userRouter.use('/:userId/*', userController.authenticate.bind(userController));
 userRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -151,6 +211,7 @@ app.use('/api/users', userRouter);
 const diaryRouter = express.Router();
 
 // Authentication middleware
+diaryRouter.use('/:userId/*', validateUUID('userId'));
 diaryRouter.use('/:userId/*', userController.authenticate.bind(userController));
 diaryRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -162,12 +223,12 @@ diaryRouter.get('/:userId/diaries/recent', diaryController.getRecentDiaries.bind
 diaryRouter.get('/:userId/diaries/stats', diaryController.getDiaryStats.bind(diaryController));
 diaryRouter.get('/:userId/diaries/export', diaryController.exportDiaries.bind(diaryController));
 
-diaryRouter.get('/:userId/diaries/:diaryId', diaryController.getDiaryById.bind(diaryController));
-diaryRouter.put('/:userId/diaries/:diaryId', diaryController.updateDiary.bind(diaryController));
-diaryRouter.delete('/:userId/diaries/:diaryId', diaryController.deleteDiary.bind(diaryController));
+diaryRouter.get('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.getDiaryById.bind(diaryController));
+diaryRouter.put('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.updateDiary.bind(diaryController));
+diaryRouter.delete('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.deleteDiary.bind(diaryController));
 
 // Diary interactions
-diaryRouter.post('/:userId/diaries/:diaryId/reaction', diaryController.addReaction.bind(diaryController));
+diaryRouter.post('/:userId/diaries/:diaryId/reaction', validateUUID('diaryId'), diaryController.addReaction.bind(diaryController));
 
 // Diary filtering
 diaryRouter.get('/:userId/diaries/category/:category', diaryController.getDiariesByCategory.bind(diaryController));
@@ -184,6 +245,7 @@ app.use('/api', diaryRouter);
 const chatRouter = express.Router();
 
 // Authentication middleware
+chatRouter.use('/:userId/*', validateUUID('userId'));
 chatRouter.use('/:userId/*', userController.authenticate.bind(userController));
 chatRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -196,15 +258,15 @@ chatRouter.get('/:userId/messages/media', chatController.getChatMedia.bind(chatC
 chatRouter.get('/:userId/messages/export', chatController.exportMessages.bind(chatController));
 chatRouter.get('/:userId/messages/summary', chatController.getConversationSummary.bind(chatController));
 
-chatRouter.get('/:userId/messages/:partnerId', chatController.getMessages.bind(chatController));
+chatRouter.get('/:userId/messages/:partnerId', validateUUID('partnerId'), chatController.getMessages.bind(chatController));
 
-chatRouter.put('/:userId/messages/:messageId', chatController.updateMessage.bind(chatController));
-chatRouter.delete('/:userId/messages/:messageId', chatController.deleteMessage.bind(chatController));
+chatRouter.put('/:userId/messages/:messageId', validateUUID('messageId'), chatController.updateMessage.bind(chatController));
+chatRouter.delete('/:userId/messages/:messageId', validateUUID('messageId'), chatController.deleteMessage.bind(chatController));
 
 // Message interactions
 chatRouter.post('/:userId/messages/mark-read', chatController.markAsRead.bind(chatController));
-chatRouter.post('/:userId/messages/:messageId/reaction', chatController.addReaction.bind(chatController));
-chatRouter.delete('/:userId/messages/:messageId/reaction', chatController.removeReaction.bind(chatController));
+chatRouter.post('/:userId/messages/:messageId/reaction', validateUUID('messageId'), chatController.addReaction.bind(chatController));
+chatRouter.delete('/:userId/messages/:messageId/reaction', validateUUID('messageId'), chatController.removeReaction.bind(chatController));
 
 // Chat search
 chatRouter.get('/:userId/messages/search', chatController.searchMessages.bind(chatController));
@@ -217,6 +279,7 @@ app.use('/api', chatRouter);
 const todoRouter = express.Router();
 
 // Authentication middleware
+todoRouter.use('/:userId/*', validateUUID('userId'));
 todoRouter.use('/:userId/*', userController.authenticate.bind(userController));
 todoRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -230,12 +293,12 @@ todoRouter.get('/:userId/todos/reminders', todoController.getTodosWithReminders.
 todoRouter.get('/:userId/todos/summary', todoController.getTodoSummary.bind(todoController));
 todoRouter.get('/:userId/todos/export', todoController.exportTodos.bind(todoController));
 
-todoRouter.get('/:userId/todos/:todoId', todoController.getTodoById.bind(todoController));
-todoRouter.put('/:userId/todos/:todoId', todoController.updateTodo.bind(todoController));
-todoRouter.delete('/:userId/todos/:todoId', todoController.deleteTodo.bind(todoController));
+todoRouter.get('/:userId/todos/:todoId', validateUUID('todoId'), todoController.getTodoById.bind(todoController));
+todoRouter.put('/:userId/todos/:todoId', validateUUID('todoId'), todoController.updateTodo.bind(todoController));
+todoRouter.delete('/:userId/todos/:todoId', validateUUID('todoId'), todoController.deleteTodo.bind(todoController));
 
 // Todo actions
-todoRouter.patch('/:userId/todos/:todoId/toggle', todoController.toggleCompleted.bind(todoController));
+todoRouter.patch('/:userId/todos/:todoId/toggle', validateUUID('todoId'), todoController.toggleCompleted.bind(todoController));
 
 // Todo filtering
 todoRouter.get('/:userId/todos/category/:category', todoController.getTodosByCategory.bind(todoController));
@@ -253,6 +316,7 @@ app.use('/api', todoRouter);
 const pomodoroRouter = express.Router();
 
 // Authentication middleware
+pomodoroRouter.use('/:userId/*', validateUUID('userId'));
 pomodoroRouter.use('/:userId/*', userController.authenticate.bind(userController));
 pomodoroRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -266,10 +330,10 @@ pomodoroRouter.get('/:userId/pomodoro/best', pomodoroController.getBestSessions.
 pomodoroRouter.get('/:userId/pomodoro/summary', pomodoroController.getPomodoroSummary.bind(pomodoroController));
 pomodoroRouter.get('/:userId/pomodoro/export', pomodoroController.exportSessions.bind(pomodoroController));
 
-pomodoroRouter.post('/:userId/pomodoro/:sessionId/complete', pomodoroController.completeSession.bind(pomodoroController));
-pomodoroRouter.delete('/:userId/pomodoro/:sessionId/cancel', pomodoroController.cancelSession.bind(pomodoroController));
-pomodoroRouter.put('/:userId/pomodoro/:sessionId', pomodoroController.updateSession.bind(pomodoroController));
-pomodoroRouter.post('/:userId/pomodoro/:sessionId/interrupt', pomodoroController.addInterruption.bind(pomodoroController));
+pomodoroRouter.post('/:userId/pomodoro/:sessionId/complete', validateUUID('sessionId'), pomodoroController.completeSession.bind(pomodoroController));
+pomodoroRouter.delete('/:userId/pomodoro/:sessionId/cancel', validateUUID('sessionId'), pomodoroController.cancelSession.bind(pomodoroController));
+pomodoroRouter.put('/:userId/pomodoro/:sessionId', validateUUID('sessionId'), pomodoroController.updateSession.bind(pomodoroController));
+pomodoroRouter.post('/:userId/pomodoro/:sessionId/interrupt', validateUUID('sessionId'), pomodoroController.addInterruption.bind(pomodoroController));
 
 // Pomodoro filtering
 pomodoroRouter.get('/:userId/pomodoro/type/:sessionType', pomodoroController.getSessionsByType.bind(pomodoroController));
@@ -288,6 +352,7 @@ app.use('/api', pomodoroRouter);
 const mathRouter = express.Router();
 
 // Authentication middleware
+mathRouter.use('/:userId/*', validateUUID('userId'));
 mathRouter.use('/:userId/*', userController.authenticate.bind(userController));
 mathRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -309,6 +374,7 @@ app.use('/api', mathRouter);
 const nekoRouter = express.Router();
 
 // Authentication middleware
+nekoRouter.use('/:userId/*', validateUUID('userId'));
 nekoRouter.use('/:userId/*', userController.authenticate.bind(userController));
 nekoRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
@@ -318,7 +384,7 @@ nekoRouter.get('/:userId/neko/conversations', nekoChatController.getConversation
 nekoRouter.get('/:userId/neko/stats', nekoChatController.getConversationStats.bind(nekoChatController));
 nekoRouter.get('/:userId/neko/advice', nekoChatController.getDailyAdvice.bind(nekoChatController));
 nekoRouter.get('/:userId/neko/greeting', nekoChatController.getMorningGreeting.bind(nekoChatController));
-nekoRouter.delete('/:userId/neko/conversation/:conversationId', nekoChatController.deleteConversation.bind(nekoChatController));
+nekoRouter.delete('/:userId/neko/conversation/:conversationId', validateUUID('conversationId'), nekoChatController.deleteConversation.bind(nekoChatController));
 nekoRouter.delete('/:userId/neko/conversations', nekoChatController.clearAllConversations.bind(nekoChatController));
 nekoRouter.put('/:userId/neko/mode', nekoChatController.updateNekoMode.bind(nekoChatController));
 
@@ -330,6 +396,7 @@ app.use('/api', nekoRouter);
 const dashboardRouter = express.Router();
 
 // Authentication middleware
+dashboardRouter.use('/:userId/*', validateUUID('userId'));
 dashboardRouter.use('/:userId/*', userController.authenticate.bind(userController));
 dashboardRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 

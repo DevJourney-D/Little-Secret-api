@@ -1,5 +1,6 @@
 // Todo Service - จัดการรายการสิ่งที่ต้องทำ
 const { createClient } = require('@supabase/supabase-js');
+const { v4: uuidv4 } = require('uuid');
 
 class TodoService {
     constructor() {
@@ -15,6 +16,7 @@ class TodoService {
             const { data, error } = await this.supabase
                 .from('todos')
                 .insert([{
+                    id: uuidv4(), // ใช้ UUID
                     user_id: todoData.user_id,
                     title: todoData.title,
                     description: todoData.description,
