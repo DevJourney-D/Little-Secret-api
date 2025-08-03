@@ -103,6 +103,9 @@ app.get('/test', (req, res) => {
     });
 });
 
+// Direct login route (shortcut)
+app.post('/login', userController.loginUser.bind(userController));
+
 // ===============================
 // USER ROUTES
 // ===============================
