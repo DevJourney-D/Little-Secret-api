@@ -202,6 +202,86 @@ app.get('/api/test-users-table', async (req, res) => {
     }
 });
 
+// Test direct user creation via PostgreSQL
+app.post('/api/test-create-user-direct', async (req, res) => {
+    try {
+        const { Client } = require('pg');
+        const bcrypt = require('bcrypt');
+        const { v4: uuidv4 } = require('uuid');
+        
+        const { username, email, password, displayName } = req.body;
+        
+        if (!username || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username, email และ password จำเป็น'
+            });
+        }
+        
+        const connectionString = 'postgresql://postgres.cnvrikxkxrdeuofbbwkk:062191Komkem@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres';
+        
+        const client = new Client({
+            connectionString: connectionString
+        });
+        
+        await client.connect();
+        console.log('Connected to create user');
+        
+        // สร้าง UUID และ hash password
+        const userId = uuidv4();
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        
+        console.log('Creating user with ID:', userId);
+        
+        // Insert user
+        const insertQuery = `
+            INSERT INTO users (
+                id, email, username, password, first_name, last_name, 
+                display_name, timezone, language, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+            RETURNING id, email, username, display_name, created_at;
+        `;
+        
+        const values = [
+            userId,
+            email,
+            username,
+            hashedPassword,
+            displayName?.split(' ')[0] || username,
+            displayName?.split(' ')[1] || '',
+            displayName || username,
+            'Asia/Bangkok',
+            'th'
+        ];
+        
+        const result = await client.query(insertQuery, values);
+        
+        await client.end();
+        
+        console.log('User created successfully:', result.rows[0]);
+        
+        res.json({
+            success: true,
+            message: 'User created successfully via direct PostgreSQL',
+            data: result.rows[0]
+        });
+        
+    } catch (error) {
+        console.error('Direct user creation error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Direct user creation failed',
+            error: {
+                message: error.message,
+                name: error.name,
+                code: error.code,
+                detail: error.detail
+            }
+        });
+    }
+});
+
 // ===============================
 // USER ROUTES
 // ===============================
