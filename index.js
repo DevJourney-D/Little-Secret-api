@@ -94,6 +94,34 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Test endpoint
+app.get('/api/test-supabase', async (req, res) => {
+    try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+        
+        // ทดสอบ connection
+        const { data, error } = await supabase.from('users').select('count').limit(1);
+        
+        res.json({
+            success: true,
+            message: 'Supabase connection test',
+            connection_status: error ? 'Failed' : 'Success',
+            error: error ? error.message : null,
+            data
+        });
+    } catch (error) {
+        res.json({
+            success: false,
+            message: 'Supabase connection failed',
+            error: error.message
+        });
+    }
+});
+
 // ===============================
 // USER ROUTES
 // ===============================
