@@ -25,23 +25,30 @@ const nekoChatController = new NekoChatController();
 const app = express();
 
 // Middleware Configuration
+app.use((req, res, next) => {
+    // Set CORS headers for all requests
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // Handle preflight OPTIONS requests
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    
+    next();
+});
+
 app.use(cors({
-    origin: '*', // Allow all origins temporarily for testing
+    origin: '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Handle preflight requests
-app.options('*', cors({
-    origin: '*',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-}));
 
 // Rate Limiting - Disabled for debugging
 // const limiter = rateLimit({
@@ -60,7 +67,17 @@ app.use((req, res, next) => {
     next();
 });
 
-// Health Check
+// Health Check - Root route for Vercel
+app.get('/', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Neko U API is running! 🐱💕',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0'
+    });
+});
+
+// Health Check - API route
 app.get('/api/health', (req, res) => {
     res.json({
         success: true,
