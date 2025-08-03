@@ -378,30 +378,43 @@ app.use('/api/*', (req, res) => {
 // Global Error Handler
 app.use((error, req, res, next) => {
     console.error('Global Error:', error);
+    console.error('Error Stack:', error.stack);
 
     res.status(error.status || 500).json({
         success: false,
         message: error.message || 'Internal Server Error',
+        error_details: error.toString(),
         ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
 });
 
 // For Vercel serverless functions
 module.exports = (req, res) => {
-    // Set CORS headers for all requests
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+    try {
+        // Set CORS headers for all requests
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        
+        // Handle preflight requests
+        if (req.method === 'OPTIONS') {
+            res.status(200).end();
+            return;
+        }
+        
+        console.log(`📝 ${req.method} ${req.url}`);
+        
+        // Process request through Express app
+        return app(req, res);
+    } catch (error) {
+        console.error('Handler Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Handler Error: ' + error.message,
+            error: error.toString()
+        });
     }
-    
-    // Process request through Express app
-    return app(req, res);
 };
 
 // For local development
