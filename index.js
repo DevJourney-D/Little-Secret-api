@@ -83,7 +83,14 @@ app.get('/api/health', (req, res) => {
         success: true,
         message: 'Neko U API is running! 🐱💕',
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.0.0',
+        environment: {
+            NODE_ENV: process.env.NODE_ENV,
+            SUPABASE_URL: process.env.SUPABASE_URL ? 'Set' : 'Missing',
+            SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'Set' : 'Missing',
+            SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing',
+            JWT_SECRET: process.env.JWT_SECRET ? 'Set' : 'Missing'
+        }
     });
 });
 
