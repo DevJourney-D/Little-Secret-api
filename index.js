@@ -4,8 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
-// Import UUID Validation Middleware
-const { validateUUID, validateMultipleUUIDs } = require('./middleware/uuidValidation');
+// Import ID Validation Middleware
+const { validateID, validateMultipleIDs } = require('./middleware/idValidation');
 
 // Import Controllers
 const UserController = require('./controllers/UserController');
@@ -207,7 +207,6 @@ app.post('/api/test-create-user-direct', async (req, res) => {
     try {
         const { Client } = require('pg');
         const bcrypt = require('bcrypt');
-        const { v4: uuidv4 } = require('uuid');
         
         const { username, email, password, displayName } = req.body;
         
@@ -227,24 +226,23 @@ app.post('/api/test-create-user-direct', async (req, res) => {
         await client.connect();
         console.log('Connected to create user');
         
-        // สร้าง UUID และ hash password
-        const userId = uuidv4();
+        // Hash password (ไม่ต้องสร้าง UUID เพราะใช้ auto-increment)
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
         
-        console.log('Creating user with ID:', userId);
+        console.log('Creating user with auto-increment ID');
         
-        // Insert user
+        // Insert user (ไม่ใส่ id เพื่อให้ auto-increment ทำงาน)
         const insertQuery = `
             INSERT INTO users (
-                id, email, username, password, first_name, last_name, 
-                display_name, timezone, language, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                email, username, password, first_name, last_name, 
+                display_name, timezone, language, status, email_verified, is_online,
+                theme_preference, notification_settings, privacy_settings, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
             RETURNING id, email, username, display_name, created_at;
         `;
         
         const values = [
-            userId,
             email,
             username,
             hashedPassword,
@@ -252,7 +250,13 @@ app.post('/api/test-create-user-direct', async (req, res) => {
             displayName?.split(' ')[1] || '',
             displayName || username,
             'Asia/Bangkok',
-            'th'
+            'th',
+            'active',
+            false,
+            false,
+            'default',
+            JSON.stringify({ chat: true, push: true, diary: true, email: true }),
+            JSON.stringify({ diary_default: "shared", last_seen_visible: true, profile_visibility: "partner" })
         ];
         
         const result = await client.query(insertQuery, values);
@@ -391,7 +395,7 @@ userRouter.get('/email/:email', userController.getUserByEmail.bind(userControlle
 userRouter.get('/username/:username', userController.getUserByUsername.bind(userController));
 
 // Authentication middleware for protected routes
-userRouter.use('/:userId/*', validateUUID('userId'), userController.authenticate.bind(userController));
+userRouter.use('/:userId/*', validateID('userId'), userController.authenticate.bind(userController));
 userRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
 // Protected user management
@@ -419,7 +423,7 @@ app.use('/api/users', userRouter);
 const diaryRouter = express.Router();
 
 // Authentication middleware
-diaryRouter.use('/:userId/*', validateUUID('userId'), userController.authenticate.bind(userController));
+diaryRouter.use('/:userId/*', validateID('userId'), userController.authenticate.bind(userController));
 diaryRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
 
 // Diary CRUD
@@ -430,12 +434,12 @@ diaryRouter.get('/:userId/diaries/recent', diaryController.getRecentDiaries.bind
 diaryRouter.get('/:userId/diaries/stats', diaryController.getDiaryStats.bind(diaryController));
 diaryRouter.get('/:userId/diaries/export', diaryController.exportDiaries.bind(diaryController));
 
-diaryRouter.get('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.getDiaryById.bind(diaryController));
-diaryRouter.put('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.updateDiary.bind(diaryController));
-diaryRouter.delete('/:userId/diaries/:diaryId', validateUUID('diaryId'), diaryController.deleteDiary.bind(diaryController));
+diaryRouter.get('/:userId/diaries/:diaryId', validateID('diaryId'), diaryController.getDiaryById.bind(diaryController));
+diaryRouter.put('/:userId/diaries/:diaryId', validateID('diaryId'), diaryController.updateDiary.bind(diaryController));
+diaryRouter.delete('/:userId/diaries/:diaryId', validateID('diaryId'), diaryController.deleteDiary.bind(diaryController));
 
 // Diary interactions
-diaryRouter.post('/:userId/diaries/:diaryId/reaction', validateUUID('diaryId'), diaryController.addReaction.bind(diaryController));
+diaryRouter.post('/:userId/diaries/:diaryId/reaction', validateID('diaryId'), diaryController.addReaction.bind(diaryController));
 
 // Diary filtering
 diaryRouter.get('/:userId/diaries/category/:category', diaryController.getDiariesByCategory.bind(diaryController));

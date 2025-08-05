@@ -6,20 +6,31 @@
 
 This is the backend API for the Little Secret (Neko U) application - a comprehensive platform for couples to share diaries, chat, manage todos, track productivity with Pomodoro sessions, practice math together, and interact with an AI companion.
 
+## 🎉 Recent Updates (August 2025)
+
+### Database Schema Migration
+- ✅ **ID System Upgrade**: Migrated from UUID to BigInt auto-increment for better performance
+- ✅ **Enhanced Tables**: Added new fields for reactions, activity logs, and improved user preferences
+- ✅ **Modern Schema**: Updated all tables to use the latest PostgreSQL best practices
+- ✅ **Code Optimization**: Removed UUID dependencies and optimized all service classes
+
+See [Database Migration Notes](./database/migration-notes.md) for detailed changes.
+
 ## Features
 
 - 👥 **User Management** - Registration, authentication, partner connections
-- 📝 **Diary System** - Shared couple diaries with mood tracking
-- 💬 **Real-time Chat** - Messaging between partners
-- ✅ **Todo Management** - Shared and personal task tracking
-- 🍅 **Pomodoro Sessions** - Focus tracking and productivity
-- 📊 **Math Practice** - Educational math problems and progress
-- 🐱 **Neko AI Chat** - AI companion interactions
+- 📝 **Diary System** - Shared couple diaries with mood tracking and reactions
+- 💬 **Real-time Chat** - Messaging between partners with reactions and rich media
+- ✅ **Todo Management** - Shared and personal task tracking with advanced features
+- 🍅 **Pomodoro Sessions** - Focus tracking and productivity analysis
+- 📊 **Math Practice** - Educational math problems with detailed analytics
+- 🐱 **Neko AI Chat** - AI companion interactions with context awareness
+- 📊 **Activity Logging** - Comprehensive user activity tracking
 
 ## Tech Stack
 
 - **Runtime**: Node.js with Express.js
-- **Database**: Supabase (PostgreSQL)
+- **Database**: Supabase (PostgreSQL) with BigInt IDs
 - **Authentication**: JWT tokens
 - **Deployment**: Vercel (Serverless Functions)
 

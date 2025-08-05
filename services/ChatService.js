@@ -1,6 +1,5 @@
 // Chat Service - จัดการแชท
 const { createClient } = require('@supabase/supabase-js');
-const { v4: uuidv4 } = require('uuid');
 
 class ChatService {
     constructor() {
@@ -16,13 +15,13 @@ class ChatService {
             const { data, error } = await this.supabase
                 .from('chat_messages')
                 .insert([{
-                    id: uuidv4(), // ใช้ UUID
                     sender_id: messageData.sender_id,
                     receiver_id: messageData.receiver_id,
                     message: messageData.message,
                     message_type: messageData.message_type || 'text',
                     reply_to_id: messageData.reply_to_id,
-                    attachments: messageData.attachments
+                    attachments: messageData.attachments,
+                    reactions: {}
                 }])
                 .select(`
                     *,

@@ -1,6 +1,5 @@
 // Pomodoro Service - จัดการ Pomodoro Timer
 const { createClient } = require('@supabase/supabase-js');
-const { v4: uuidv4 } = require('uuid');
 
 class PomodoroService {
     constructor() {
@@ -16,13 +15,12 @@ class PomodoroService {
             const { data, error } = await this.supabase
                 .from('pomodoro_sessions')
                 .insert([{
-                    id: uuidv4(), // ใช้ UUID
                     user_id: sessionData.user_id,
                     task_name: sessionData.task_name,
-                    task_description: sessionData.task_description,
                     duration_minutes: sessionData.duration_minutes || 25,
-                    session_type: sessionData.session_type || 'work',
-                    started_at: new Date().toISOString()
+                    break_duration: sessionData.break_duration || 5,
+                    session_type: sessionData.session_type || 'focus',
+                    notes: sessionData.task_description || sessionData.notes
                 }])
                 .select(`
                     *,
@@ -54,9 +52,7 @@ class PomodoroService {
             const updateData = {
                 completed: true,
                 completed_at: new Date().toISOString(),
-                interruptions: sessionData.interruptions || 0,
-                focus_rating: sessionData.focus_rating,
-                productivity_notes: sessionData.productivity_notes
+                notes: sessionData.productivity_notes || sessionData.notes
             };
 
             const { data, error } = await this.supabase

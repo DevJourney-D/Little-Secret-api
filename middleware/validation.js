@@ -119,11 +119,13 @@ class ValidationMiddleware {
         }),
 
         chatMessage: Joi.object({
-            receiver_id: Joi.string()
-                .uuid()
+            receiver_id: Joi.number()
+                .integer()
+                .positive()
                 .required()
                 .messages({
-                    'string.uuid': 'Invalid receiver ID',
+                    'number.integer': 'Invalid receiver ID - must be an integer',
+                    'number.positive': 'Invalid receiver ID - must be positive',
                     'any.required': 'Receiver ID is required'
                 }),
             
@@ -282,20 +284,22 @@ class ValidationMiddleware {
     validatePagination = this.validateQuery(this.schemas.pagination);
 
     // Custom validators
-    validateUUID(paramName) {
+    validateID(paramName) {
         return (req, res, next) => {
-            const uuid = req.params[paramName];
-            const uuidSchema = Joi.string().uuid();
+            const id = req.params[paramName];
+            const idSchema = Joi.number().integer().positive();
             
-            const { error } = uuidSchema.validate(uuid);
+            const { error } = idSchema.validate(parseInt(id, 10));
             
             if (error) {
                 return res.status(400).json({
-                    error: `Invalid ${paramName} format`,
-                    code: 'INVALID_UUID'
+                    error: `Invalid ${paramName} format - must be a positive integer`,
+                    code: 'INVALID_ID'
                 });
             }
             
+            // เก็บ parsed ID กลับไปใน params
+            req.params[paramName] = parseInt(id, 10);
             next();
         };
     }

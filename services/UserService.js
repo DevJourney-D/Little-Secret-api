@@ -1,7 +1,6 @@
 // User Service - จัดการข้อมูลผู้ใช้งาน
 const { createClient } = require('@supabase/supabase-js');
 const bcrypt = require('bcrypt');
-const { v4: uuidv4 } = require('uuid');
 
 class UserService {
     constructor() {
@@ -20,9 +19,6 @@ class UserService {
             if (!userData.email || !userData.username || !userData.password) {
                 throw new Error('Email, username และ password เป็นข้อมูลที่จำเป็น');
             }
-
-            // สร้าง UUID สำหรับ user ID
-            const userId = uuidv4();
             
             // Hash password ก่อนบันทึก
             let hashedPassword = null;
@@ -31,12 +27,11 @@ class UserService {
                 hashedPassword = await bcrypt.hash(userData.password, saltRounds);
             }
 
-            console.log('Attempting to insert user with ID:', userId);
+            console.log('Attempting to insert user');
 
             const { data, error } = await this.supabase
                 .from('users')
                 .insert([{
-                    id: userId, // ใช้ UUID
                     email: userData.email,
                     username: userData.username,
                     password: hashedPassword, // บันทึก hashed password
@@ -50,7 +45,22 @@ class UserService {
                     bio: userData.bio,
                     avatar_url: userData.avatar_url || userData.avatarUrl,
                     timezone: userData.timezone || 'Asia/Bangkok',
-                    language: userData.language || 'th'
+                    language: userData.language || 'th',
+                    status: 'active',
+                    email_verified: false,
+                    is_online: false,
+                    theme_preference: 'default',
+                    notification_settings: {
+                        chat: true,
+                        push: true,
+                        diary: true,
+                        email: true
+                    },
+                    privacy_settings: {
+                        diary_default: "shared",
+                        last_seen_visible: true,
+                        profile_visibility: "partner"
+                    }
                 }])
                 .select()
                 .single();
@@ -59,8 +69,8 @@ class UserService {
 
             if (error) throw error;
 
-            // TODO: สร้าง user preferences อัตโนมัติ (ปิดไว้ก่อนเพื่อ debug)
-            // await this.createUserPreferences(data.id);
+            // สร้าง user preferences อัตโนมัติ
+            await this.createUserPreferences(data.id);
 
             // ลบรหัสผ่านออกจาก response
             const { password: _, ...userWithoutPassword } = data;
@@ -296,21 +306,18 @@ class UserService {
             const { data, error } = await this.supabase
                 .from('user_preferences')
                 .insert([{
-                    id: uuidv4(), // ใช้ UUID สำหรับ preferences ID
                     user_id: userId,
-                    notification_enabled: true,
-                    daily_greeting_enabled: true,
-                    theme: 'default',
-                    language: 'th',
-                    timezone: 'Asia/Bangkok',
-                    dark_mode: false,
-                    font_size: 'normal',
+                    notification_sound: 'default',
                     auto_save: true,
-                    privacy_mode: false,
-                    email_notifications: true,
-                    push_notifications: true,
-                    diary_auto_backup: true,
-                    location_sharing: false
+                    dark_mode: false,
+                    font_size: 14,
+                    language_preference: 'th',
+                    time_format: '24h',
+                    date_format: 'DD/MM/YYYY',
+                    timezone: 'Asia/Bangkok',
+                    privacy_diary_default: 'shared',
+                    privacy_location_sharing: true,
+                    privacy_last_seen: true
                 }])
                 .select()
                 .single();
@@ -394,7 +401,6 @@ class UserService {
             await this.supabase
                 .from('relationships')
                 .insert([{
-                    id: uuidv4(), // ใช้ UUID สำหรับ relationship ID
                     user1_id: userId,
                     user2_id: partner.id,
                     status: 'active'
@@ -407,13 +413,14 @@ class UserService {
     }
 
     // บันทึก Activity Log
-    async logActivity(userId, activityType, activityData = {}, req = null) {
+    async logActivity(userId, action, targetType = null, targetId = null, details = {}, req = null) {
         try {
             const logData = {
-                id: uuidv4(), // ใช้ UUID สำหรับ activity log ID
                 user_id: userId,
-                activity_type: activityType,
-                activity_data: activityData
+                action: action,
+                target_type: targetType,
+                target_id: targetId,
+                details: details
             };
 
             if (req) {

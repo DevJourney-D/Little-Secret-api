@@ -13,10 +13,17 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(result.data.id, 'user_created', {
-                    email: result.data.email,
-                    username: result.data.username
-                }, req);
+                await this.userService.logActivity(
+                    result.data.id, 
+                    'user_created', 
+                    'user', 
+                    result.data.id, 
+                    {
+                        email: result.data.email,
+                        username: result.data.username
+                    }, 
+                    req
+                );
 
                 res.status(201).json({
                     success: true,
@@ -54,10 +61,17 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(result.data.user.id, 'user_login', {
-                    username: result.data.user.username,
-                    login_method: 'username'
-                }, req);
+                await this.userService.logActivity(
+                    result.data.user.id, 
+                    'user_login', 
+                    'user', 
+                    result.data.user.id, 
+                    {
+                        username: result.data.user.username,
+                        login_method: 'username'
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,
@@ -170,9 +184,16 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'profile_updated', {
-                    updated_fields: Object.keys(req.body)
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'profile_updated', 
+                    'user', 
+                    userId, 
+                    {
+                        updated_fields: Object.keys(req.body)
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,
@@ -202,7 +223,7 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'account_deactivated', {}, req);
+                await this.userService.logActivity(userId, 'account_deactivated', 'user', userId, {}, req);
 
                 res.json({
                     success: true,
@@ -294,9 +315,16 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'preferences_updated', {
-                    updated_settings: Object.keys(req.body)
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'preferences_updated', 
+                    'user_preferences', 
+                    userId, 
+                    {
+                        updated_settings: Object.keys(req.body)
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,
@@ -326,9 +354,16 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'partner_code_generated', {
-                    partner_code: result.data.partner_code
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'partner_code_generated', 
+                    'user', 
+                    userId, 
+                    {
+                        partner_code: result.data.partner_code
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,
@@ -370,10 +405,17 @@ class UserController {
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'partner_connected', {
-                    partner_id: result.data.id,
-                    partner_name: result.data.display_name || `${result.data.first_name} ${result.data.last_name}`
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'partner_connected', 
+                    'relationship', 
+                    result.data.id, 
+                    {
+                        partner_id: result.data.id,
+                        partner_name: result.data.display_name || `${result.data.first_name} ${result.data.last_name}`
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,

@@ -32,10 +32,11 @@ class BackendUtils {
         return true;
     }
 
-    // ตรวจสอบความถูกต้องของ UUID
-    static isValidUUID(uuid) {
-        if (!uuid || typeof uuid !== 'string') return false;
-        return validator.isUUID(uuid);
+    // ตรวจสอบความถูกต้องของ ID (เปลี่ยนจาก UUID เป็น Integer)
+    static isValidID(id) {
+        if (!id) return false;
+        const parsedId = parseInt(id, 10);
+        return !isNaN(parsedId) && parsedId > 0 && Number.isInteger(parsedId);
     }
 
     // ตรวจสอบความถูกต้องของข้อความ

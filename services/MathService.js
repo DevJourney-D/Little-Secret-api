@@ -1,6 +1,5 @@
 // Math Service - จัดการโจทย์คณิตศาสตร์
 const { createClient } = require('@supabase/supabase-js');
-const { v4: uuidv4 } = require('uuid');
 
 class MathService {
     constructor() {
@@ -228,19 +227,16 @@ class MathService {
             const { data, error } = await this.supabase
                 .from('math_problems')
                 .insert([{
-                    id: uuidv4(), // ใช้ UUID
                     user_id: problemData.user_id,
-                    problem_type: problemData.operation,
-                    question: problemData.question,
+                    problem_text: problemData.question,
                     correct_answer: problemData.correct_answer,
                     user_answer: problemData.user_answer,
+                    difficulty: problemData.difficulty || 'easy',
+                    category: problemData.operation || 'arithmetic',
                     is_correct: problemData.user_answer === problemData.correct_answer,
-                    difficulty: problemData.difficulty,
-                    time_spent: problemData.time_spent,
-                    operation: problemData.operation,
+                    time_taken_seconds: problemData.time_spent,
                     hints_used: problemData.hints_used || 0,
-                    attempts: problemData.attempts || 1,
-                    explanation: problemData.explanation
+                    answered_at: new Date().toISOString()
                 }])
                 .select()
                 .single();
