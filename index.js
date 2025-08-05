@@ -40,7 +40,11 @@ app.use(cors({
             'http://127.0.0.1:5500',
             'http://localhost:5500',
             'http://127.0.0.1:8080',
-            'http://localhost:8080'
+            'http://localhost:8080',
+            'http://127.0.0.1:3000',
+            'http://localhost:3000',
+            'http://127.0.0.1:5173',
+            'http://localhost:5173'
         ];
         
         if (allowedOrigins.indexOf(origin) !== -1) {
@@ -99,6 +103,16 @@ app.get('/api/health', (req, res) => {
 // ===============================
 app.get('/api/check/username/:username', userController.checkUsernameAvailability.bind(userController));
 app.get('/api/check/email/:email', userController.checkEmailAvailability.bind(userController));
+
+// Alternative routes for frontend compatibility
+app.get('/auth/check/username/:username', userController.checkUsernameAvailability.bind(userController));
+app.get('/auth/check/email/:email', userController.checkEmailAvailability.bind(userController));
+
+// ===============================
+// AUTH ROUTES (for frontend compatibility)
+// ===============================
+app.post('/auth/register', userController.createUser.bind(userController));
+app.post('/auth/login', userController.loginUser.bind(userController));
 
 // Test endpoint
 app.get('/api/test-connection', async (req, res) => {
