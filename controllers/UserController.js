@@ -148,6 +148,87 @@ class UserController {
         }
     }
 
+    // ดึงข้อมูลผู้ใช้ทั้งหมด (สำหรับหน้าบ้าน)
+    async getAllUsers(req, res) {
+        try {
+            const filters = {
+                status: req.query.status,
+                is_online: req.query.is_online !== undefined ? req.query.is_online === 'true' : undefined,
+                search: req.query.search,
+                orderBy: req.query.orderBy,
+                orderDirection: req.query.orderDirection,
+                limit: req.query.limit ? parseInt(req.query.limit) : undefined,
+                offset: req.query.offset ? parseInt(req.query.offset) : undefined
+            };
+
+            // ลบ undefined values
+            Object.keys(filters).forEach(key => {
+                if (filters[key] === undefined) {
+                    delete filters[key];
+                }
+            });
+
+            const result = await this.userService.getAllUsers(filters);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    data: result.data,
+                    count: result.data.length
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้ทั้งหมด',
+                error: error.message
+            });
+        }
+    }
+
+    // นับจำนวนผู้ใช้ทั้งหมด
+    async getUserCount(req, res) {
+        try {
+            const filters = {
+                status: req.query.status,
+                is_online: req.query.is_online !== undefined ? req.query.is_online === 'true' : undefined,
+                search: req.query.search
+            };
+
+            // ลบ undefined values
+            Object.keys(filters).forEach(key => {
+                if (filters[key] === undefined) {
+                    delete filters[key];
+                }
+            });
+
+            const result = await this.userService.getUserCount(filters);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    data: result.data
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการนับจำนวนผู้ใช้',
+                error: error.message
+            });
+        }
+    }
+
     // ตรวจสอบว่า email ใช้งานได้หรือไม่
     async checkEmailAvailability(req, res) {
         try {

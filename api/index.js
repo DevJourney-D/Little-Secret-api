@@ -113,6 +113,10 @@ userRouter.post('/login', userController.loginUser.bind(userController));
 userRouter.get('/email/:email', userController.getUserByEmail.bind(userController));
 userRouter.get('/username/:username', userController.getUserByUsername.bind(userController));
 
+// Public routes สำหรับดึงข้อมูลผู้ใช้ทั้งหมด (สำหรับหน้าบ้าน)
+userRouter.get('/', userController.getAllUsers.bind(userController));
+userRouter.get('/count', userController.getUserCount.bind(userController));
+
 // Authentication middleware for protected routes
 userRouter.use('/:userId/*', validateID('userId'));
 userRouter.use('/:userId/*', userController.authenticate.bind(userController));

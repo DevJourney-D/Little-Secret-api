@@ -412,6 +412,116 @@ class UserService {
         }
     }
 
+    // ดึงข้อมูลผู้ใช้ทั้งหมด (สำหรับหน้าบ้าน)
+    async getAllUsers(filters = {}) {
+        try {
+            let query = this.supabase
+                .from('users')
+                .select(`
+                    id,
+                    email,
+                    username,
+                    first_name,
+                    last_name,
+                    display_name,
+                    nickname,
+                    gender,
+                    phone,
+                    birth_date,
+                    bio,
+                    avatar_url,
+                    timezone,
+                    language,
+                    status,
+                    email_verified,
+                    is_online,
+                    partner_id,
+                    created_at,
+                    updated_at,
+                    last_login_at,
+                    theme_preference,
+                    notification_settings,
+                    privacy_settings
+                `);
+
+            // เพิ่มตัวกรองตามสถานะ
+            if (filters.status) {
+                query = query.eq('status', filters.status);
+            }
+
+            // เพิ่มตัวกรองตาม online status
+            if (filters.is_online !== undefined) {
+                query = query.eq('is_online', filters.is_online);
+            }
+
+            // เพิ่มการค้นหาตามชื่อ
+            if (filters.search) {
+                query = query.or(`username.ilike.%${filters.search}%,display_name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+            }
+
+            // เพิ่มการเรียงลำดับ
+            const orderBy = filters.orderBy || 'created_at';
+            const orderDirection = filters.orderDirection || 'desc';
+            query = query.order(orderBy, { ascending: orderDirection === 'asc' });
+
+            // เพิ่ม pagination
+            if (filters.limit) {
+                query = query.limit(filters.limit);
+            }
+            if (filters.offset) {
+                query = query.range(filters.offset, filters.offset + (filters.limit || 50) - 1);
+            }
+
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            // ลบรหัสผ่านออกจาก response สำหรับทุก user
+            const usersWithoutPassword = data.map(user => {
+                const { password, ...userWithoutPassword } = user;
+                return userWithoutPassword;
+            });
+
+            return { success: true, data: usersWithoutPassword };
+        } catch (error) {
+            console.error('getAllUsers error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // นับจำนวนผู้ใช้ทั้งหมด
+    async getUserCount(filters = {}) {
+        try {
+            let query = this.supabase
+                .from('users')
+                .select('id', { count: 'exact', head: true });
+
+            // เพิ่มตัวกรองตามสถานะ
+            if (filters.status) {
+                query = query.eq('status', filters.status);
+            }
+
+            // เพิ่มตัวกรองตาม online status
+            if (filters.is_online !== undefined) {
+                query = query.eq('is_online', filters.is_online);
+            }
+
+            // เพิ่มการค้นหาตามชื่อ
+            if (filters.search) {
+                query = query.or(`username.ilike.%${filters.search}%,display_name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+            }
+
+            const { count, error } = await query;
+
+            if (error) throw error;
+
+            return { success: true, data: { count } };
+        } catch (error) {
+            console.error('getUserCount error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     // บันทึก Activity Log
     async logActivity(userId, action, targetType = null, targetId = null, details = {}, req = null) {
         try {
