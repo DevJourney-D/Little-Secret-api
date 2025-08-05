@@ -148,10 +148,94 @@ class UserController {
         }
     }
 
+    // ตรวจสอบว่า email ใช้งานได้หรือไม่
+    async checkEmailAvailability(req, res) {
+        try {
+            const { email } = req.params;
+            
+            // ตรวจสอบรูปแบบ email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                return res.status(400).json({
+                    success: false,
+                    available: false,
+                    message: 'รูปแบบอีเมลไม่ถูกต้อง'
+                });
+            }
+
+            const result = await this.userService.getUserByEmail(email);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    available: false,
+                    message: 'อีเมลนี้ถูกใช้แล้ว'
+                });
+            } else {
+                res.json({
+                    success: true,
+                    available: true,
+                    message: 'อีเมลใช้งานได้'
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการตรวจสอบอีเมล',
+                error: error.message
+            });
+        }
+    }
+
     // ดึงข้อมูลผู้ใช้ตาม username
     async getUserByUsername(req, res) {
         try {
             const { username } = req.params;
+            const result = await this.userService.getUserByUsername(username);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    data: result.data
+                });
+            } else {
+                res.status(404).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้',
+                error: error.message
+            });
+        }
+    }
+
+    // ตรวจสอบว่า username ใช้งานได้หรือไม่
+    async checkUsernameAvailability(req, res) {
+        try {
+            const { username } = req.params;
+            
+            // ตรวจสอบรูปแบบ username
+            if (!username || username.length < 3) {
+                return res.status(400).json({
+                    success: false,
+                    available: false,
+                    message: 'ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร'
+                });
+            }
+
+            const usernameRegex = /^[a-zA-Z0-9_]+$/;
+            if (!usernameRegex.test(username)) {
+                return res.status(400).json({
+                    success: false,
+                    available: false,
+                    message: 'ชื่อผู้ใช้สามารถใช้ได้เฉพาะตัวอักษร ตัวเลข และ _'
+                });
+            }
+
             const result = await this.userService.getUserByUsername(username);
             
             if (result.success) {
@@ -164,7 +248,7 @@ class UserController {
                 res.json({
                     success: true,
                     available: true,
-                    message: 'ชื่อผู้ใช้ว่าง'
+                    message: 'ชื่อผู้ใช้ใช้งานได้'
                 });
             }
         } catch (error) {

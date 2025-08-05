@@ -94,6 +94,12 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// ===============================
+// AVAILABILITY CHECK ROUTES (Before other routes to avoid middleware conflicts)
+// ===============================
+app.get('/api/check/username/:username', userController.checkUsernameAvailability.bind(userController));
+app.get('/api/check/email/:email', userController.checkEmailAvailability.bind(userController));
+
 // Test endpoint
 app.get('/api/test-connection', async (req, res) => {
     try {
@@ -391,29 +397,35 @@ const userRouter = express.Router();
 // Public routes (no authentication required)
 userRouter.post('/', userController.createUser.bind(userController));
 userRouter.post('/login', userController.loginUser.bind(userController));
+
+// Check availability routes (must be before the general email/username routes)
+userRouter.get('/availability/email/:email', userController.checkEmailAvailability.bind(userController));
+userRouter.get('/availability/username/:username', userController.checkUsernameAvailability.bind(userController));
+
+// General user lookup routes
 userRouter.get('/email/:email', userController.getUserByEmail.bind(userController));
 userRouter.get('/username/:username', userController.getUserByUsername.bind(userController));
 
-// Authentication middleware for protected routes
-userRouter.use('/:userId/*', validateID('userId'), userController.authenticate.bind(userController));
-userRouter.use('/:userId/*', userController.authorizeOwner.bind(userController));
+// Authentication middleware for protected routes (only apply to numeric userId)
+userRouter.use('/:userId(\\d+)/*', validateID('userId'), userController.authenticate.bind(userController));
+userRouter.use('/:userId(\\d+)/*', userController.authorizeOwner.bind(userController));
 
-// Protected user management
-userRouter.get('/:userId', userController.getUserById.bind(userController));
-userRouter.put('/:userId', userController.updateUser.bind(userController));
-userRouter.delete('/:userId', userController.deleteUser.bind(userController));
+// Protected user management (with numeric userId)
+userRouter.get('/:userId(\\d+)', userController.getUserById.bind(userController));
+userRouter.put('/:userId(\\d+)', userController.updateUser.bind(userController));
+userRouter.delete('/:userId(\\d+)', userController.deleteUser.bind(userController));
 
 // User status and preferences
-userRouter.patch('/:userId/status', userController.setOnlineStatus.bind(userController));
-userRouter.put('/:userId/preferences', userController.updatePreferences.bind(userController));
+userRouter.patch('/:userId(\\d+)/status', userController.setOnlineStatus.bind(userController));
+userRouter.put('/:userId(\\d+)/preferences', userController.updatePreferences.bind(userController));
 
 // Partner connection
-userRouter.post('/:userId/generate-partner-code', userController.generatePartnerCode.bind(userController));
-userRouter.post('/:userId/connect-partner', userController.connectWithPartner.bind(userController));
+userRouter.post('/:userId(\\d+)/generate-partner-code', userController.generatePartnerCode.bind(userController));
+userRouter.post('/:userId(\\d+)/connect-partner', userController.connectWithPartner.bind(userController));
 
 // User search and activity
-userRouter.get('/:currentUserId/search', userController.searchUsers.bind(userController));
-userRouter.get('/:userId/activity-logs', userController.getActivityLogs.bind(userController));
+userRouter.get('/:currentUserId(\\d+)/search', userController.searchUsers.bind(userController));
+userRouter.get('/:userId(\\d+)/activity-logs', userController.getActivityLogs.bind(userController));
 
 app.use('/api/users', userRouter);
 

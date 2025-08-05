@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Little Secret API Tester - Updated</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input.available {
+            border-color: #28a745;
+            background-color: #f8fff9;
+        }
+        input.unavailable {
+            border-color: #dc3545;
+            background-color: #fff8f8;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.small {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .result.mini {
+            padding: 8px;
+            font-size: 11px;
+            margin-top: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .loading {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .inline-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .inline-group input {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Little Secret API Tester (Updated)</h1>
+        
+        <!-- Health Check Section -->
+        <div class="section">
+            <h2>1. ตรวจสอบสถานะ API</h2>
+            <button onclick="checkHealth()">ตรวจสอบ Health</button>
+            <div id="healthResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Username/Email Check Section -->
+        <div class="section">
+            <h2>2. ตรวจสอบความพร้อมใช้งาน Username และ Email</h2>
+            
+            <div class="form-group">
+                <label for="testUsername">ตรวจสอบ Username:</label>
+                <div class="inline-group">
+                    <input type="text" id="testUsername" placeholder="กรอก username ที่ต้องการตรวจสอบ" onblur="checkUsernameAvailability()">
+                    <button class="small" onclick="checkUsernameAvailability()">ตรวจสอบ</button>
+                </div>
+                <div id="usernameCheckResult" class="result mini" style="display: none;"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="testEmail">ตรวจสอบ Email:</label>
+                <div class="inline-group">
+                    <input type="email" id="testEmail" placeholder="กรอก email ที่ต้องการตรวจสอบ" onblur="checkEmailAvailability()">
+                    <button class="small" onclick="checkEmailAvailability()">ตรวจสอบ</button>
+                </div>
+                <div id="emailCheckResult" class="result mini" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Registration Section -->
+        <div class="section">
+            <h2>3. ลงทะเบียนผู้ใช้ใหม่</h2>
+            <div class="form-group">
+                <label for="regUsername">Username: <span id="usernameIndicator"></span></label>
+                <input type="text" id="regUsername" placeholder="ชื่อผู้ใช้" onblur="checkRegUsername()" oninput="clearUsernameIndicator()">
+                <div id="regUsernameCheck" class="result mini" style="display: none;"></div>
+            </div>
+            <div class="form-group">
+                <label for="regEmail">Email: <span id="emailIndicator"></span></label>
+                <input type="email" id="regEmail" placeholder="อีเมล" onblur="checkRegEmail()" oninput="clearEmailIndicator()">
+                <div id="regEmailCheck" class="result mini" style="display: none;"></div>
+            </div>
+            <div class="form-group">
+                <label for="regPassword">Password:</label>
+                <input type="password" id="regPassword" placeholder="รหัสผ่าน">
+            </div>
+            <div class="form-group">
+                <label for="regFirstName">ชื่อจริง:</label>
+                <input type="text" id="regFirstName" placeholder="ชื่อจริง">
+            </div>
+            <div class="form-group">
+                <label for="regLastName">นามสกุล:</label>
+                <input type="text" id="regLastName" placeholder="นามสกุล">
+            </div>
+            <button onclick="registerUser()">ลงทะเบียน</button>
+            <button onclick="generateRandomUser()">สร้างข้อมูลสุ่ม</button>
+            <div id="registerResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Login Section -->
+        <div class="section">
+            <h2>4. เข้าสู่ระบบ</h2>
+            <div class="form-group">
+                <label for="loginUsername">Username:</label>
+                <input type="text" id="loginUsername" placeholder="ชื่อผู้ใช้">
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Password:</label>
+                <input type="password" id="loginPassword" placeholder="รหัสผ่าน">
+            </div>
+            <button onclick="loginUser()">เข้าสู่ระบบ</button>
+            <div id="loginResult" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Test Invalid Login -->
+        <div class="section">
+            <h2>5. ทดสอบการเข้าสู่ระบบที่ผิดพลาด</h2>
+            <button onclick="testInvalidLogin()">ทดสอบ Login ผิดพลาด</button>
+            <div id="invalidLoginResult" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://little-secret-api.vercel.app/api';
+
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        function showMiniResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.className = `result mini ${type}`;
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        function showLoading(elementId) {
+            showResult(elementId, 'กำลังประมวลผล...', 'loading');
+        }
+
+        function clearUsernameIndicator() {
+            document.getElementById('usernameIndicator').innerHTML = '';
+            document.getElementById('regUsername').className = '';
+            document.getElementById('regUsernameCheck').style.display = 'none';
+        }
+
+        function clearEmailIndicator() {
+            document.getElementById('emailIndicator').innerHTML = '';
+            document.getElementById('regEmail').className = '';
+            document.getElementById('regEmailCheck').style.display = 'none';
+        }
+
+        // Health Check
+        async function checkHealth() {
+            showLoading('healthResult');
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('healthResult', `Status: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                showResult('healthResult', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Check Username Availability (standalone)
+        async function checkUsernameAvailability() {
+            const username = document.getElementById('testUsername').value.trim();
+            if (!username) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/check/username/${encodeURIComponent(username)}`);
+                const data = await response.json();
+                
+                const resultType = data.available ? 'success' : 'warning';
+                showMiniResult('usernameCheckResult', `${data.message}\nResponse: ${JSON.stringify(data, null, 2)}`, resultType);
+            } catch (error) {
+                showMiniResult('usernameCheckResult', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Check Email Availability (standalone)
+        async function checkEmailAvailability() {
+            const email = document.getElementById('testEmail').value.trim();
+            if (!email) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/check/email/${encodeURIComponent(email)}`);
+                const data = await response.json();
+                
+                const resultType = data.available ? 'success' : 'warning';
+                showMiniResult('emailCheckResult', `${data.message}\nResponse: ${JSON.stringify(data, null, 2)}`, resultType);
+            } catch (error) {
+                showMiniResult('emailCheckResult', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Check Username for Registration Form
+        async function checkRegUsername() {
+            const username = document.getElementById('regUsername').value.trim();
+            if (!username) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/check/username/${encodeURIComponent(username)}`);
+                const data = await response.json();
+                
+                const input = document.getElementById('regUsername');
+                const indicator = document.getElementById('usernameIndicator');
+                
+                if (data.available) {
+                    input.className = 'available';
+                    indicator.innerHTML = '✅ ใช้ได้';
+                    indicator.style.color = '#28a745';
+                    showMiniResult('regUsernameCheck', data.message, 'success');
+                } else {
+                    input.className = 'unavailable';
+                    indicator.innerHTML = '❌ ไม่ใช้ได้';
+                    indicator.style.color = '#dc3545';
+                    showMiniResult('regUsernameCheck', data.message, 'warning');
+                }
+            } catch (error) {
+                showMiniResult('regUsernameCheck', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Check Email for Registration Form
+        async function checkRegEmail() {
+            const email = document.getElementById('regEmail').value.trim();
+            if (!email) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/check/email/${encodeURIComponent(email)}`);
+                const data = await response.json();
+                
+                const input = document.getElementById('regEmail');
+                const indicator = document.getElementById('emailIndicator');
+                
+                if (data.available) {
+                    input.className = 'available';
+                    indicator.innerHTML = '✅ ใช้ได้';
+                    indicator.style.color = '#28a745';
+                    showMiniResult('regEmailCheck', data.message, 'success');
+                } else {
+                    input.className = 'unavailable';
+                    indicator.innerHTML = '❌ ไม่ใช้ได้';
+                    indicator.style.color = '#dc3545';
+                    showMiniResult('regEmailCheck', data.message, 'warning');
+                }
+            } catch (error) {
+                showMiniResult('regEmailCheck', `Error: ${error.message}`, 'error');
+            }
+        }
+
+        function generateRandomUser() {
+            const timestamp = Date.now();
+            document.getElementById('regUsername').value = `testuser${timestamp}`;
+            document.getElementById('regEmail').value = `test${timestamp}@example.com`;
+            document.getElementById('regPassword').value = 'Password123!';
+            document.getElementById('regFirstName').value = 'Test';
+            document.getElementById('regLastName').value = 'User';
+            
+            // Clear indicators
+            clearUsernameIndicator();
+            clearEmailIndicator();
+        }
+
+        async function registerUser() {
+            showLoading('registerResult');
+            
+            const userData = {
+                username: document.getElementById('regUsername').value,
+                email: document.getElementById('regEmail').value,
+                password: document.getElementById('regPassword').value,
+                firstName: document.getElementById('regFirstName').value,
+                lastName: document.getElementById('regLastName').value
+            };
+
+            // Validation
+            if (!userData.username || !userData.email || !userData.password) {
+                showResult('registerResult', 'กรุณากรอกข้อมูลที่จำเป็น (Username, Email, Password)', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(userData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult('registerResult', `✅ ลงทะเบียนสำเร็จ!\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'success');
+                    
+                    // Auto-fill login form
+                    document.getElementById('loginUsername').value = userData.username;
+                    document.getElementById('loginPassword').value = userData.password;
+                } else {
+                    showResult('registerResult', `❌ ลงทะเบียนล้มเหลว\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult('registerResult', `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function loginUser() {
+            showLoading('loginResult');
+            
+            const loginData = {
+                username: document.getElementById('loginUsername').value,
+                password: document.getElementById('loginPassword').value
+            };
+
+            if (!loginData.username || !loginData.password) {
+                showResult('loginResult', 'กรุณากรอก Username และ Password', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/users/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(loginData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showResult('loginResult', `✅ เข้าสู่ระบบสำเร็จ!\nStatus: ${response.status}\nUser: ${data.data.user.username}\nToken: ${data.data.token ? 'Received' : 'Not received'}\nResponse: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult('loginResult', `❌ เข้าสู่ระบบล้มเหลว\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult('loginResult', `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testInvalidLogin() {
+            showLoading('invalidLoginResult');
+            
+            const invalidData = {
+                username: 'nonexistentuser',
+                password: 'wrongpassword'
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/users/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(invalidData)
+                });
+
+                const data = await response.json();
+                
+                if (response.status === 401) {
+                    showResult('invalidLoginResult', `✅ ระบบทำงานถูกต้อง! ปฏิเสธการเข้าสู่ระบบที่ผิดพลาด\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult('invalidLoginResult', `⚠️ Unexpected Response\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'warning');
+                }
+            } catch (error) {
+                showResult('invalidLoginResult', `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-generate random user data on page load
+        window.onload = function() {
+            generateRandomUser();
+        };
+    </script>
+</body>
+</html>
