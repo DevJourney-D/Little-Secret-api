@@ -101,74 +101,6 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Simple test route
-app.get('/test', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.json({
-        success: true,
-        message: 'Test endpoint working!',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Direct login route (shortcut)
-app.post('/login', userController.loginUser.bind(userController));
-
-// Utility route for updating existing passwords to hashed versions (TEMPORARY)
-app.post('/admin/hash-passwords', async (req, res) => {
-    try {
-        const { adminKey } = req.body;
-        
-        // Simple admin protection
-        if (adminKey !== 'hash-existing-passwords-2024') {
-            return res.status(403).json({ success: false, error: 'Unauthorized' });
-        }
-
-        const bcrypt = require('bcrypt');
-        const { createClient } = require('@supabase/supabase-js');
-        
-        const supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-        );
-
-        // Get all users with plain text passwords
-        const { data: users, error } = await supabase
-            .from('users')
-            .select('id, username, password')
-            .not('password', 'is', null);
-
-        if (error) throw error;
-
-        const updates = [];
-        for (const user of users) {
-            if (user.password && !user.password.startsWith('$2b$')) {
-                // Hash the plain text password
-                const hashedPassword = await bcrypt.hash(user.password, 10);
-                updates.push(
-                    supabase
-                        .from('users')
-                        .update({ password: hashedPassword })
-                        .eq('id', user.id)
-                );
-            }
-        }
-
-        await Promise.all(updates);
-
-        res.json({
-            success: true,
-            message: `Updated ${updates.length} passwords to hashed versions`,
-            users_updated: users.length
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
 
 // ===============================
 // USER ROUTES
@@ -450,23 +382,6 @@ app.use('/api', dashboardRouter);
 // ERROR HANDLING
 // ===============================
 
-// Catch-all route for debugging
-app.get('*', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.status(200).json({
-        success: false,
-        message: 'Route not found, but API is working',
-        path: req.path,
-        method: req.method,
-        available_routes: [
-            'GET /',
-            'GET /test', 
-            'GET /api/health',
-            'POST /api/users',
-            'POST /api/users/login'
-        ]
-    });
-});
 
 // 404 Handler for API routes only
 app.use('/api/*', (req, res) => {

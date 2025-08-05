@@ -44,16 +44,70 @@ See [Database Migration Notes](./database/migration-notes.md) for detailed chang
 
 ## API Endpoints
 
-- `GET /api/health` - Health check
-- `POST /api/users` - User registration
-- `POST /api/users/login` - User login
-- `/api/users/:userId/*` - User management (protected)
-- `/api/:userId/diary/*` - Diary operations (protected)
-- `/api/:userId/messages/*` - Chat operations (protected)
-- `/api/:userId/todos/*` - Todo operations (protected)
-- `/api/:userId/pomodoro/*` - Pomodoro operations (protected)
-- `/api/:userId/math/*` - Math operations (protected)
-- `/api/:userId/neko-chat/*` - AI chat operations (protected)
+
+## API Endpoints
+
+### General
+- `GET /api/health` — Health check
+
+### Authentication & User Management
+- `POST /api/users` — Register new user
+- `POST /api/users/login` — User login
+- `GET /api/users/email/:email` — Get user by email
+- `GET /api/users/username/:username` — Get user by username
+- `GET /api/users/availability/username/:username` — Check username availability
+- `GET /api/users/availability/email/:email` — Check email availability
+- `POST /auth/register` — User registration (frontend compatibility)
+- `POST /auth/login` — User login (frontend compatibility)
+- `GET /auth/check/username/:username` — Check username availability (frontend compatibility)
+- `GET /auth/check/email/:email` — Check email availability (frontend compatibility)
+- `GET /api/users/:userId` — Get user profile (protected)
+- `PUT /api/users/:userId` — Update user profile (protected)
+- `DELETE /api/users/:userId` — Delete user (protected)
+- `POST /api/users/:userId/partner` — Connect with partner (protected)
+- `DELETE /api/users/:userId/partner` — Disconnect partner (protected)
+
+### Diary
+- `GET /api/:userId/diaries` — Get all diaries (protected)
+- `POST /api/:userId/diaries` — Create new diary (protected)
+- `GET /api/:userId/diaries/:diaryId` — Get diary by ID (protected)
+- `PUT /api/:userId/diaries/:diaryId` — Update diary (protected)
+- `DELETE /api/:userId/diaries/:diaryId` — Delete diary (protected)
+- `POST /api/:userId/diaries/:diaryId/react` — React to diary (protected)
+
+### Chat
+- `GET /api/:userId/messages` — Get all chat messages (protected)
+- `POST /api/:userId/messages` — Send new message (protected)
+- `GET /api/:userId/messages/:messageId` — Get message by ID (protected)
+- `DELETE /api/:userId/messages/:messageId` — Delete message (protected)
+- `POST /api/:userId/messages/:messageId/react` — React to message (protected)
+
+### Todo
+- `GET /api/:userId/todos` — Get all todos (protected)
+- `POST /api/:userId/todos` — Create new todo (protected)
+- `GET /api/:userId/todos/:todoId` — Get todo by ID (protected)
+- `PUT /api/:userId/todos/:todoId` — Update todo (protected)
+- `DELETE /api/:userId/todos/:todoId` — Delete todo (protected)
+
+### Pomodoro
+- `GET /api/:userId/pomodoro` — Get all pomodoro sessions (protected)
+- `POST /api/:userId/pomodoro` — Create new pomodoro session (protected)
+- `GET /api/:userId/pomodoro/:sessionId` — Get session by ID (protected)
+- `PUT /api/:userId/pomodoro/:sessionId` — Update session (protected)
+- `DELETE /api/:userId/pomodoro/:sessionId` — Delete session (protected)
+
+### Math Practice
+- `GET /api/:userId/math` — Get all math problems (protected)
+- `POST /api/:userId/math` — Create new math problem (protected)
+- `GET /api/:userId/math/:problemId` — Get problem by ID (protected)
+- `PUT /api/:userId/math/:problemId` — Update problem (protected)
+- `DELETE /api/:userId/math/:problemId` — Delete problem (protected)
+
+### Neko AI Chat
+- `POST /api/:userId/neko` — Send message to Neko AI (protected)
+- `GET /api/:userId/neko/history` — Get Neko AI chat history (protected)
+
+---
 
 ## Deployment
 
