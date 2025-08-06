@@ -9,6 +9,323 @@ class MathService {
         );
     }
 
+    // ============================================
+    // HELPER METHODS - ฟังก์ชันช่วยเหลือ
+    // ============================================
+
+    // สร้าง pagination object
+    _buildPagination(page = 1, limit = 20, total = 0) {
+        return {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasMore: (page * limit) < total
+        };
+    }
+
+    // ตรวจสอบสิทธิ์การเข้าถึงโจทย์คณิตศาสตร์
+    async _checkMathProblemAccess(problemId, userId) {
+        try {
+            const { data: problem } = await this.supabase
+                .from('math_problems')
+                .select('user_id')
+                .eq('id', problemId)
+                .single();
+
+            if (!problem) {
+                throw new Error('ไม่พบโจทย์คณิตศาสตร์');
+            }
+
+            const hasAccess = problem.user_id === userId;
+            const isOwner = problem.user_id === userId;
+
+            return { hasAccess, isOwner, problem };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // สร้าง query สำหรับกรองโจทย์คณิตศาสตร์
+    _buildMathQuery(baseQuery, filters = {}) {
+        let query = baseQuery;
+
+        // กรองตามความยาก
+        if (filters.difficulty) {
+            query = query.eq('difficulty', filters.difficulty);
+        }
+
+        // กรองตามประเภทการคำนวณ
+        if (filters.category || filters.operation) {
+            query = query.eq('category', filters.category || filters.operation);
+        }
+
+        // กรองตามความถูกต้อง
+        if (filters.is_correct !== undefined) {
+            query = query.eq('is_correct', filters.is_correct);
+        }
+
+        // กรองตามวันที่
+        if (filters.dateFrom) {
+            query = query.gte('created_at', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+            query = query.lte('created_at', filters.dateTo);
+        }
+
+        // ค้นหาในโจทย์
+        if (filters.search) {
+            query = query.ilike('problem_text', `%${filters.search}%`);
+        }
+
+        // เรียงลำดับ
+        const sortBy = filters.sortBy || 'created_at';
+        const sortOrder = filters.sortOrder || 'desc';
+        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+        return query;
+    }
+
+    // ============================================
+    // CORE MATH OPERATIONS - การจัดการโจทย์คณิตศาสตร์พื้นฐาน
+    // ============================================
+
+    // สร้างโจทย์คณิตศาสตร์ใหม่ (CREATE)
+    async createMathProblem(problemData) {
+        try {
+            const { data, error } = await this.supabase
+                .from('math_problems')
+                .insert([{
+                    user_id: problemData.user_id,
+                    problem_text: problemData.question || problemData.problem_text,
+                    correct_answer: problemData.correct_answer,
+                    user_answer: problemData.user_answer,
+                    difficulty: problemData.difficulty || 'easy',
+                    category: problemData.operation || problemData.category || 'arithmetic',
+                    is_correct: problemData.user_answer === problemData.correct_answer,
+                    time_taken_seconds: problemData.time_spent || problemData.time_taken_seconds,
+                    hints_used: problemData.hints_used || 0,
+                    explanation: problemData.explanation,
+                    answered_at: new Date().toISOString()
+                }])
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('createMathProblem error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ดึงโจทย์ตาม ID (READ)
+    async getMathProblemById(problemId, userId) {
+        try {
+            const accessCheck = await this._checkMathProblemAccess(problemId, userId);
+            
+            if (!accessCheck.hasAccess) {
+                throw new Error('ไม่มีสิทธิ์เข้าถึงโจทย์นี้');
+            }
+
+            const { data, error } = await this.supabase
+                .from('math_problems')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .eq('id', problemId)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('getMathProblemById error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // อัปเดตโจทย์ (UPDATE)
+    async updateMathProblem(problemId, userId, updateData) {
+        try {
+            const accessCheck = await this._checkMathProblemAccess(problemId, userId);
+            
+            if (!accessCheck.isOwner) {
+                throw new Error('ไม่มีสิทธิ์แก้ไขโจทย์นี้');
+            }
+
+            // ลบข้อมูลที่ไม่ควรแก้ไข
+            const cleanData = { ...updateData };
+            delete cleanData.id;
+            delete cleanData.user_id;
+            delete cleanData.created_at;
+            delete cleanData.answered_at;
+
+            // คำนวณความถูกต้องใหม่หากมีการเปลี่ยนคำตอบ
+            if (cleanData.user_answer && cleanData.correct_answer) {
+                cleanData.is_correct = cleanData.user_answer === cleanData.correct_answer;
+            }
+
+            const { data, error } = await this.supabase
+                .from('math_problems')
+                .update({
+                    ...cleanData,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', problemId)
+                .eq('user_id', userId)
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('updateMathProblem error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ลบโจทย์ (DELETE)
+    async deleteMathProblem(problemId, userId) {
+        try {
+            const accessCheck = await this._checkMathProblemAccess(problemId, userId);
+            
+            if (!accessCheck.isOwner) {
+                throw new Error('ไม่มีสิทธิ์ลบโจทย์นี้');
+            }
+
+            const { error } = await this.supabase
+                .from('math_problems')
+                .delete()
+                .eq('id', problemId)
+                .eq('user_id', userId);
+
+            if (error) throw error;
+            return { success: true, data: { message: 'ลบโจทย์เรียบร้อยแล้ว' } };
+        } catch (error) {
+            console.error('deleteMathProblem error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ============================================
+    // LISTING & FILTERING - การแสดงรายการและกรอง
+    // ============================================
+
+    // แสดงรายการโจทย์ของผู้ใช้ (LIST)
+    async listMathProblems(userId, options = {}) {
+        try {
+            const {
+                page = 1,
+                limit = 20,
+                difficulty = null,
+                category = null,
+                is_correct = null,
+                search = '',
+                sortBy = 'created_at',
+                sortOrder = 'desc'
+            } = options;
+
+            const offset = (page - 1) * limit;
+
+            let query = this.supabase
+                .from('math_problems')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `, { count: 'exact' })
+                .eq('user_id', userId);
+
+            // ใช้ helper function สำหรับ filter
+            query = this._buildMathQuery(query, { difficulty, category, is_correct, search, sortBy, sortOrder });
+            query = query.range(offset, offset + limit - 1);
+
+            const { data, error, count } = await query;
+            if (error) throw error;
+
+            return {
+                success: true,
+                data: {
+                    problems: data,
+                    pagination: this._buildPagination(page, limit, count)
+                }
+            };
+        } catch (error) {
+            console.error('listMathProblems error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ดึงข้อมูลผู้ใช้และสถิติ (USER INFO)
+    async getUserMathInfo(userId) {
+        try {
+            // ดึงข้อมูลผู้ใช้
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, first_name, last_name, display_name, email, avatar_url, created_at')
+                .eq('id', userId)
+                .single();
+
+            if (userError) throw userError;
+
+            // ดึงสถิติ
+            const statsResult = await this.getMathStats(userId);
+            const stats = statsResult.success ? statsResult.data : {};
+
+            // ดึงโจทย์ล่าสุด
+            const recentResult = await this.listMathProblems(userId, { limit: 5 });
+            const recentProblems = recentResult.success ? recentResult.data.problems : [];
+
+            // ดึงโจทย์ที่ทำผิด
+            const incorrectResult = await this.getIncorrectProblems(userId, 5);
+            const incorrectProblems = incorrectResult.success ? incorrectResult.data : [];
+
+            return {
+                success: true,
+                data: {
+                    user,
+                    stats,
+                    recent_problems: recentProblems,
+                    incorrect_problems: incorrectProblems,
+                    summary: {
+                        total_problems: stats.total || 0,
+                        accuracy: stats.accuracy || 0,
+                        favorite_difficulty: this._getFavoriteDifficulty(stats.byDifficulty || {}),
+                        average_time: stats.averageTime || 0
+                    }
+                }
+            };
+        } catch (error) {
+            console.error('getUserMathInfo error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // หาระดับความยากที่ชื่นชอบ
+    _getFavoriteDifficulty(byDifficulty) {
+        let max = 0;
+        let favorite = 'easy';
+        
+        for (const [difficulty, count] of Object.entries(byDifficulty)) {
+            if (count > max) {
+                max = count;
+                favorite = difficulty;
+            }
+        }
+        
+        return favorite;
+    }
+
+    // ============================================
+    // MATH PROBLEM GENERATION - การสร้างโจทย์คณิตศาสตร์
+    // ============================================
+
     // สร้างโจทย์คณิตศาสตร์
     async generateMathProblem(difficulty = 'easy', operation = 'random') {
         try {
@@ -33,6 +350,7 @@ class MathService {
 
             return { success: true, data: problem };
         } catch (error) {
+            console.error('generateMathProblem error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -221,77 +539,28 @@ class MathService {
         };
     }
 
-    // บันทึกคำตอบผู้ใช้
+    // บันทึกคำตอบผู้ใช้ (Alias สำหรับ createMathProblem)
     async saveMathAnswer(problemData) {
-        try {
-            const { data, error } = await this.supabase
-                .from('math_problems')
-                .insert([{
-                    user_id: problemData.user_id,
-                    problem_text: problemData.question,
-                    correct_answer: problemData.correct_answer,
-                    user_answer: problemData.user_answer,
-                    difficulty: problemData.difficulty || 'easy',
-                    category: problemData.operation || 'arithmetic',
-                    is_correct: problemData.user_answer === problemData.correct_answer,
-                    time_taken_seconds: problemData.time_spent,
-                    hints_used: problemData.hints_used || 0,
-                    answered_at: new Date().toISOString()
-                }])
-                .select()
-                .single();
-
-            if (error) throw error;
-            return { success: true, data };
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
+        return await this.createMathProblem(problemData);
     }
 
-    // ดึงประวัติการทำโจทย์
+    // ============================================
+    // ADVANCED FEATURES - ฟีเจอร์ขั้นสูง
+    // ============================================
+
+    // ดึงประวัติการทำโจทย์ (Alias สำหรับ listMathProblems)
     async getMathHistory(userId, page = 1, limit = 20, filters = {}) {
-        try {
-            const offset = (page - 1) * limit;
-
-            let query = this.supabase
-                .from('math_problems')
-                .select('*', { count: 'exact' })
-                .eq('user_id', userId);
-
-            // กรองตามความยาก
-            if (filters.difficulty) {
-                query = query.eq('difficulty', filters.difficulty);
-            }
-
-            // กรองตามประเภทการคำนวณ
-            if (filters.operation) {
-                query = query.eq('operation', filters.operation);
-            }
-
-            // กรองตามความถูกต้อง
-            if (filters.is_correct !== undefined) {
-                query = query.eq('is_correct', filters.is_correct);
-            }
-
-            const { data, error, count } = await query
-                .order('created_at', { ascending: false })
-                .range(offset, offset + limit - 1);
-
-            if (error) throw error;
-
-            return { 
-                success: true, 
-                data,
-                pagination: {
-                    page,
-                    limit,
-                    total: count,
-                    totalPages: Math.ceil(count / limit)
-                }
+        const result = await this.listMathProblems(userId, { page, limit, ...filters });
+        
+        if (result.success) {
+            return {
+                success: true,
+                data: result.data.problems,
+                pagination: result.data.pagination
             };
-        } catch (error) {
-            return { success: false, error: error.message };
         }
+        
+        return result;
     }
 
     // ดึงสถิติการทำโจทย์
@@ -306,8 +575,8 @@ class MathService {
                 return { 
                     success: true, 
                     data: { 
-                        total: 0, 
-                        correct: 0, 
+                        total: 0,
+                        correct: 0,
                         accuracy: 0,
                         byDifficulty: {},
                         byOperation: {},
@@ -326,40 +595,34 @@ class MathService {
             };
 
             // คำนวณความแม่นยำ
-            stats.accuracy = (stats.correct / stats.total * 100).toFixed(2);
+            stats.accuracy = parseFloat((stats.correct / stats.total * 100).toFixed(2));
 
             // สถิติตามความยาก
             problems.forEach(problem => {
-                const difficulty = problem.difficulty;
-                if (!stats.byDifficulty[difficulty]) {
-                    stats.byDifficulty[difficulty] = { total: 0, correct: 0 };
-                }
-                stats.byDifficulty[difficulty].total++;
-                if (problem.is_correct) {
-                    stats.byDifficulty[difficulty].correct++;
-                }
+                const difficulty = problem.difficulty || 'easy';
+                stats.byDifficulty[difficulty] = (stats.byDifficulty[difficulty] || 0) + 1;
             });
 
             // สถิติตามการคำนวณ
             problems.forEach(problem => {
-                const operation = problem.operation;
-                if (!stats.byOperation[operation]) {
-                    stats.byOperation[operation] = { total: 0, correct: 0 };
-                }
-                stats.byOperation[operation].total++;
-                if (problem.is_correct) {
-                    stats.byOperation[operation].correct++;
-                }
+                const operation = problem.category || 'arithmetic';
+                stats.byOperation[operation] = (stats.byOperation[operation] || 0) + 1;
             });
 
             // เวลาเฉลี่ย
-            const timesSpent = problems.filter(p => p.time_spent).map(p => parseFloat(p.time_spent));
+            const timesSpent = problems
+                .filter(p => p.time_taken_seconds)
+                .map(p => parseFloat(p.time_taken_seconds));
+            
             if (timesSpent.length > 0) {
-                stats.averageTime = (timesSpent.reduce((a, b) => a + b, 0) / timesSpent.length).toFixed(2);
+                stats.averageTime = parseFloat(
+                    (timesSpent.reduce((a, b) => a + b, 0) / timesSpent.length).toFixed(2)
+                );
             }
 
             return { success: true, data: stats };
         } catch (error) {
+            console.error('getMathStats error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -369,7 +632,10 @@ class MathService {
         try {
             const { data, error } = await this.supabase
                 .from('math_problems')
-                .select('*')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
                 .eq('user_id', userId)
                 .eq('is_correct', false)
                 .order('created_at', { ascending: false })
@@ -378,6 +644,23 @@ class MathService {
             if (error) throw error;
             return { success: true, data };
         } catch (error) {
+            console.error('getIncorrectProblems error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ค้นหาโจทย์
+    async searchMathProblems(userId, searchTerm, options = {}) {
+        try {
+            const searchOptions = {
+                ...options,
+                search: searchTerm,
+                limit: options.limit || 50
+            };
+
+            return await this.listMathProblems(userId, searchOptions);
+        } catch (error) {
+            console.error('searchMathProblems error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -389,15 +672,16 @@ class MathService {
             const incorrectResult = await this.getIncorrectProblems(userId, count * 2);
             
             if (!incorrectResult.success || incorrectResult.data.length === 0) {
-                // ถ้าไม่มีโจทย์ที่ทำผิด ให้สร้างโจทย์ใหม่
-                const problems = [];
+                // ถ้าไม่มีโจทย์ที่ทำผิด ให้สร้างโจทย์ใหม่แบบสุ่ม
+                const reviewProblems = [];
                 for (let i = 0; i < count; i++) {
-                    const problem = await this.generateMathProblem('medium');
-                    if (problem.success) {
-                        problems.push(problem.data);
+                    const difficulty = ['easy', 'medium'][Math.floor(Math.random() * 2)];
+                    const problemResult = await this.generateMathProblem(difficulty);
+                    if (problemResult.success) {
+                        reviewProblems.push(problemResult.data);
                     }
                 }
-                return { success: true, data: problems };
+                return { success: true, data: reviewProblems };
             }
 
             // สร้างโจทย์ที่คล้ายกับที่ทำผิด
@@ -405,17 +689,80 @@ class MathService {
             const incorrectProblems = incorrectResult.data.slice(0, count);
 
             for (const incorrect of incorrectProblems) {
-                const similarProblem = await this.generateMathProblem(incorrect.difficulty, incorrect.operation);
-                if (similarProblem.success) {
+                const difficulty = incorrect.difficulty || 'easy';
+                const operation = incorrect.category || 'addition';
+                
+                const problemResult = await this.generateMathProblem(difficulty, operation);
+                if (problemResult.success) {
                     reviewProblems.push({
-                        ...similarProblem.data,
-                        review_for: incorrect.id
+                        ...problemResult.data,
+                        review_type: 'similar_to_incorrect',
+                        original_problem_id: incorrect.id
                     });
                 }
             }
 
             return { success: true, data: reviewProblems };
         } catch (error) {
+            console.error('generateReviewProblems error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ดึงโจทย์ที่ดีที่สุด
+    async getBestPerformances(userId, limit = 10) {
+        try {
+            const { data, error } = await this.supabase
+                .from('math_problems')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .eq('user_id', userId)
+                .eq('is_correct', true)
+                .not('time_taken_seconds', 'is', null)
+                .order('time_taken_seconds', { ascending: true })
+                .order('difficulty', { ascending: false })
+                .limit(limit);
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('getBestPerformances error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ส่งออกข้อมูล
+    async exportMathProblems(userId, format = 'json') {
+        try {
+            const { data: problems } = await this.supabase
+                .from('math_problems')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name)
+                `)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: true });
+
+            if (format === 'csv') {
+                const csvData = problems.map(problem => ({
+                    วันที่: new Date(problem.created_at).toLocaleDateString('th-TH'),
+                    โจทย์: problem.problem_text,
+                    คำตอบที่ถูก: problem.correct_answer,
+                    คำตอบของคุณ: problem.user_answer,
+                    ถูกต้อง: problem.is_correct ? 'ใช่' : 'ไม่',
+                    ความยาก: problem.difficulty,
+                    ประเภท: problem.category,
+                    เวลาที่ใช้: problem.time_taken_seconds ? `${problem.time_taken_seconds} วินาที` : '-'
+                }));
+                
+                return { success: true, data: csvData, format: 'csv' };
+            }
+
+            return { success: true, data: problems, format: 'json' };
+        } catch (error) {
+            console.error('exportMathProblems error:', error);
             return { success: false, error: error.message };
         }
     }

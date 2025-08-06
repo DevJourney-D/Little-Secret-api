@@ -59,6 +59,327 @@ class NekoChatService {
         };
     }
 
+    // ============================================
+    // HELPER METHODS - ฟังก์ชันช่วยเหลือ
+    // ============================================
+
+    // สร้าง pagination object
+    _buildPagination(page = 1, limit = 20, total = 0) {
+        return {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasMore: (page * limit) < total
+        };
+    }
+
+    // ตรวจสอบสิทธิ์การเข้าถึงการสนทนา
+    async _checkConversationAccess(conversationId, userId) {
+        try {
+            const { data: conversation } = await this.supabase
+                .from('neko_conversations')
+                .select('user_id')
+                .eq('id', conversationId)
+                .single();
+
+            if (!conversation) {
+                throw new Error('ไม่พบการสนทนา');
+            }
+
+            const hasAccess = conversation.user_id === userId;
+            const isOwner = conversation.user_id === userId;
+
+            return { hasAccess, isOwner, conversation };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // สร้าง query สำหรับกรองการสนทนา
+    _buildConversationQuery(baseQuery, filters = {}) {
+        let query = baseQuery;
+
+        // กรองตาม mood
+        if (filters.mood) {
+            query = query.eq('mood', filters.mood);
+        }
+
+        // กรองตาม emotion_detected
+        if (filters.emotion) {
+            query = query.eq('emotion_detected', filters.emotion);
+        }
+
+        // กรองตาม response_type
+        if (filters.response_type) {
+            query = query.eq('response_type', filters.response_type);
+        }
+
+        // กรองตามวันที่
+        if (filters.dateFrom) {
+            query = query.gte('created_at', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+            query = query.lte('created_at', filters.dateTo);
+        }
+
+        // ค้นหาในข้อความ
+        if (filters.search) {
+            query = query.or(`message.ilike.%${filters.search}%,response.ilike.%${filters.search}%`);
+        }
+
+        // เรียงลำดับ
+        const sortBy = filters.sortBy || 'created_at';
+        const sortOrder = filters.sortOrder || 'desc';
+        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+        return query;
+    }
+
+    // ============================================
+    // CORE NEKO OPERATIONS - การจัดการเนโกะแชทพื้นฐาน
+    // ============================================
+
+    // สร้างการสนทนาใหม่ (CREATE)
+    async createNekoConversation(conversationData) {
+        try {
+            const { data, error } = await this.supabase
+                .from('neko_conversations')
+                .insert([{
+                    user_id: conversationData.user_id,
+                    message: conversationData.message,
+                    response: conversationData.response,
+                    emotion_detected: conversationData.emotion_detected || 'neutral',
+                    response_type: conversationData.response_type || 'general',
+                    mood: conversationData.mood || 'friendly',
+                    context: conversationData.context || conversationData.conversation_context
+                }])
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('createNekoConversation error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ดึงการสนทนาตาม ID (READ)
+    async getNekoConversationById(conversationId, userId) {
+        try {
+            const accessCheck = await this._checkConversationAccess(conversationId, userId);
+            
+            if (!accessCheck.hasAccess) {
+                throw new Error('ไม่มีสิทธิ์เข้าถึงการสนทนานี้');
+            }
+
+            const { data, error } = await this.supabase
+                .from('neko_conversations')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .eq('id', conversationId)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('getNekoConversationById error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // อัปเดตการสนทนา (UPDATE)
+    async updateNekoConversation(conversationId, userId, updateData) {
+        try {
+            const accessCheck = await this._checkConversationAccess(conversationId, userId);
+            
+            if (!accessCheck.isOwner) {
+                throw new Error('ไม่มีสิทธิ์แก้ไขการสนทนานี้');
+            }
+
+            // ลบข้อมูลที่ไม่ควรแก้ไข
+            const cleanData = { ...updateData };
+            delete cleanData.id;
+            delete cleanData.user_id;
+            delete cleanData.created_at;
+
+            const { data, error } = await this.supabase
+                .from('neko_conversations')
+                .update({
+                    ...cleanData,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', conversationId)
+                .eq('user_id', userId)
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('updateNekoConversation error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ลบการสนทนา (DELETE)
+    async deleteNekoConversation(conversationId, userId) {
+        try {
+            const accessCheck = await this._checkConversationAccess(conversationId, userId);
+            
+            if (!accessCheck.isOwner) {
+                throw new Error('ไม่มีสิทธิ์ลบการสนทนานี้');
+            }
+
+            const { error } = await this.supabase
+                .from('neko_conversations')
+                .delete()
+                .eq('id', conversationId)
+                .eq('user_id', userId);
+
+            if (error) throw error;
+            return { success: true, data: { message: 'ลบการสนทนาเรียบร้อยแล้ว' } };
+        } catch (error) {
+            console.error('deleteNekoConversation error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ============================================
+    // LISTING & FILTERING - การแสดงรายการและกรอง
+    // ============================================
+
+    // แสดงรายการการสนทนาของผู้ใช้ (LIST)
+    async listNekoConversations(userId, options = {}) {
+        try {
+            const {
+                page = 1,
+                limit = 20,
+                mood = null,
+                emotion = null,
+                response_type = null,
+                search = '',
+                sortBy = 'created_at',
+                sortOrder = 'desc'
+            } = options;
+
+            const offset = (page - 1) * limit;
+
+            let query = this.supabase
+                .from('neko_conversations')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `, { count: 'exact' })
+                .eq('user_id', userId);
+
+            // ใช้ helper function สำหรับ filter
+            query = this._buildConversationQuery(query, { mood, emotion, response_type, search, sortBy, sortOrder });
+            query = query.range(offset, offset + limit - 1);
+
+            const { data, error, count } = await query;
+            if (error) throw error;
+
+            return {
+                success: true,
+                data: {
+                    conversations: data,
+                    pagination: this._buildPagination(page, limit, count)
+                }
+            };
+        } catch (error) {
+            console.error('listNekoConversations error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ดึงข้อมูลผู้ใช้และสถิติ (USER INFO)
+    async getUserNekoInfo(userId) {
+        try {
+            // ดึงข้อมูลผู้ใช้
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, first_name, last_name, display_name, email, avatar_url, created_at')
+                .eq('id', userId)
+                .single();
+
+            if (userError) throw userError;
+
+            // ดึงสถิติ
+            const statsResult = await this.getNekoStats(userId);
+            const stats = statsResult.success ? statsResult.data : {};
+
+            // ดึงการสนทนาล่าสุด
+            const recentResult = await this.listNekoConversations(userId, { limit: 5 });
+            const recentConversations = recentResult.success ? recentResult.data.conversations : [];
+
+            // วิเคราะห์ mood ที่พบบ่อย
+            const favoriteMood = this._getFavoriteMood(stats.moods || {});
+            const favoriteEmotion = this._getFavoriteEmotion(stats.emotions || {});
+
+            return {
+                success: true,
+                data: {
+                    user,
+                    stats,
+                    recent_conversations: recentConversations,
+                    summary: {
+                        total_conversations: stats.total_conversations || 0,
+                        favorite_mood: favoriteMood,
+                        favorite_emotion: favoriteEmotion,
+                        last_conversation: recentConversations[0] || null
+                    }
+                }
+            };
+        } catch (error) {
+            console.error('getUserNekoInfo error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // หา mood ที่ชื่นชอบ
+    _getFavoriteMood(moods) {
+        let max = 0;
+        let favorite = 'friendly';
+        
+        for (const [mood, count] of Object.entries(moods)) {
+            if (count > max) {
+                max = count;
+                favorite = mood;
+            }
+        }
+        
+        return favorite;
+    }
+
+    // หาอารมณ์ที่พบบ่อย
+    _getFavoriteEmotion(emotions) {
+        let max = 0;
+        let favorite = 'neutral';
+        
+        for (const [emotion, count] of Object.entries(emotions)) {
+            if (count > max) {
+                max = count;
+                favorite = emotion;
+            }
+        }
+        
+        return favorite;
+    }
+
+    // ============================================
+    // NEKO RESPONSE GENERATION - การสร้างคำตอบของเนโกะ
+    // ============================================
+
     // สร้างการตอบสนองของเนโกะ
     async generateNekoResponse(message, userId, context = {}) {
         try {
@@ -79,6 +400,7 @@ class NekoChatService {
                 mood: this.getMoodFromEmotion(emotion)
             };
         } catch (error) {
+            console.error('generateNekoResponse error:', error);
             return {
                 message: "เนโกะไม่เข้าใจค่ะ ช่วยพูดใหม่ได้ไหมคะ? 😅",
                 emotion_detected: 'neutral',
@@ -177,55 +499,28 @@ class NekoChatService {
         return moodMap[emotion] || 'friendly';
     }
 
-    // บันทึกการสนทนากับเนโกะ
+    // บันทึกการสนทนากับเนโกะ (Alias สำหรับ createNekoConversation)
     async saveNekoConversation(conversationData) {
-        try {
-            const { data, error } = await this.supabase
-                .from('neko_conversations')
-                .insert([{
-                    user_id: conversationData.user_id,
-                    message: conversationData.message,
-                    response: conversationData.response,
-                    mood: conversationData.mood || 'neutral',
-                    context: conversationData.conversation_context || conversationData.context
-                }])
-                .select()
-                .single();
-
-            if (error) throw error;
-            return { success: true, data };
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
+        return await this.createNekoConversation(conversationData);
     }
 
-    // ดึงประวัติการสนทนากับเนโกะ
+    // ============================================
+    // ADVANCED FEATURES - ฟีเจอร์ขั้นสูง
+    // ============================================
+
+    // ดึงประวัติการสนทนากับเนโกะ (Alias สำหรับ listNekoConversations)
     async getNekoConversations(userId, page = 1, limit = 20) {
-        try {
-            const offset = (page - 1) * limit;
-
-            const { data, error, count } = await this.supabase
-                .from('neko_conversations')
-                .select('*', { count: 'exact' })
-                .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .range(offset, offset + limit - 1);
-
-            if (error) throw error;
-
-            return { 
-                success: true, 
-                data,
-                pagination: {
-                    page,
-                    limit,
-                    total: count,
-                    totalPages: Math.ceil(count / limit)
-                }
+        const result = await this.listNekoConversations(userId, { page, limit });
+        
+        if (result.success) {
+            return {
+                success: true,
+                data: result.data.conversations,
+                pagination: result.data.pagination
             };
-        } catch (error) {
-            return { success: false, error: error.message };
         }
+        
+        return result;
     }
 
     // ดึงสถิติการสนทนากับเนโกะ
@@ -259,19 +554,19 @@ class NekoChatService {
 
             // นับอารมณ์
             conversations.forEach(conv => {
-                const emotion = conv.emotion_detected;
+                const emotion = conv.emotion_detected || 'neutral';
                 stats.emotions[emotion] = (stats.emotions[emotion] || 0) + 1;
             });
 
             // นับประเภทการตอบสนอง
             conversations.forEach(conv => {
-                const type = conv.response_type;
+                const type = conv.response_type || 'general';
                 stats.response_types[type] = (stats.response_types[type] || 0) + 1;
             });
 
             // นับ mood
             conversations.forEach(conv => {
-                const mood = conv.mood;
+                const mood = conv.mood || 'friendly';
                 stats.moods[mood] = (stats.moods[mood] || 0) + 1;
             });
 
@@ -286,6 +581,23 @@ class NekoChatService {
 
             return { success: true, data: stats };
         } catch (error) {
+            console.error('getNekoStats error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ค้นหาการสนทนา
+    async searchNekoConversations(userId, searchTerm, options = {}) {
+        try {
+            const searchOptions = {
+                ...options,
+                search: searchTerm,
+                limit: options.limit || 50
+            };
+
+            return await this.listNekoConversations(userId, searchOptions);
+        } catch (error) {
+            console.error('searchNekoConversations error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -333,6 +645,7 @@ class NekoChatService {
 
             return { success: true, data: advice };
         } catch (error) {
+            console.error('generateDailyAdvice error:', error);
             return { 
                 success: true, 
                 data: {
@@ -367,6 +680,7 @@ class NekoChatService {
 
             return { success: true, data: { message: selectedGreeting } };
         } catch (error) {
+            console.error('generateMorningGreeting error:', error);
             return { 
                 success: true, 
                 data: { 
@@ -374,6 +688,166 @@ class NekoChatService {
                 } 
             };
         }
+    }
+
+    // ดึงการสนทนาตาม mood
+    async getConversationsByMood(userId, mood, limit = 10) {
+        try {
+            const { data, error } = await this.supabase
+                .from('neko_conversations')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .eq('user_id', userId)
+                .eq('mood', mood)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('getConversationsByMood error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ส่งออกการสนทนา
+    async exportNekoConversations(userId, format = 'json') {
+        try {
+            const { data: conversations } = await this.supabase
+                .from('neko_conversations')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name)
+                `)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: true });
+
+            if (format === 'csv') {
+                const csvData = conversations.map(conv => ({
+                    วันที่: new Date(conv.created_at).toLocaleDateString('th-TH'),
+                    เวลา: new Date(conv.created_at).toLocaleTimeString('th-TH'),
+                    ข้อความของคุณ: conv.message,
+                    ตอบกลับของเนโกะ: conv.response,
+                    อารมณ์ที่ตรวจพบ: conv.emotion_detected,
+                    ประเภทการตอบสนอง: conv.response_type,
+                    อารมณ์ของเนโกะ: conv.mood
+                }));
+                
+                return { success: true, data: csvData, format: 'csv' };
+            }
+
+            return { success: true, data: conversations, format: 'json' };
+        } catch (error) {
+            console.error('exportNekoConversations error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // วิเคราะห์ความรู้สึกของผู้ใช้
+    async analyzeUserMood(userId, days = 7) {
+        try {
+            const dateFrom = new Date();
+            dateFrom.setDate(dateFrom.getDate() - days);
+
+            const { data: conversations } = await this.supabase
+                .from('neko_conversations')
+                .select('emotion_detected, created_at')
+                .eq('user_id', userId)
+                .gte('created_at', dateFrom.toISOString())
+                .order('created_at', { ascending: true });
+
+            if (!conversations || conversations.length === 0) {
+                return {
+                    success: true,
+                    data: {
+                        overall_mood: 'neutral',
+                        mood_trend: 'stable',
+                        daily_moods: {},
+                        recommendations: ['ลองคุยกับเนโกะบ่อยๆ นะคะ เนโกะพร้อมฟังเสมอ! 🐱']
+                    }
+                };
+            }
+
+            // วิเคราะห์อารมณ์รายวัน
+            const dailyMoods = {};
+            conversations.forEach(conv => {
+                const day = new Date(conv.created_at).toISOString().slice(0, 10);
+                if (!dailyMoods[day]) {
+                    dailyMoods[day] = { sad: 0, happy: 0, neutral: 0, love: 0, need_encouragement: 0 };
+                }
+                dailyMoods[day][conv.emotion_detected] = (dailyMoods[day][conv.emotion_detected] || 0) + 1;
+            });
+
+            // ประเมินอารมณ์โดยรวม
+            const emotionCounts = { sad: 0, happy: 0, neutral: 0, love: 0, need_encouragement: 0 };
+            conversations.forEach(conv => {
+                emotionCounts[conv.emotion_detected] = (emotionCounts[conv.emotion_detected] || 0) + 1;
+            });
+
+            const overallMood = Object.keys(emotionCounts).reduce((a, b) => 
+                emotionCounts[a] > emotionCounts[b] ? a : b
+            );
+
+            // สร้างคำแนะนำ
+            const recommendations = this._generateMoodRecommendations(overallMood, emotionCounts);
+
+            return {
+                success: true,
+                data: {
+                    overall_mood: overallMood,
+                    mood_trend: this._calculateMoodTrend(dailyMoods),
+                    daily_moods: dailyMoods,
+                    emotion_distribution: emotionCounts,
+                    recommendations
+                }
+            };
+        } catch (error) {
+            console.error('analyzeUserMood error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // สร้างคำแนะนำตามอารมณ์
+    _generateMoodRecommendations(overallMood, emotionCounts) {
+        const recommendations = [];
+
+        if (overallMood === 'sad') {
+            recommendations.push('เนโกะเห็นว่าคุณเศร้าๆ บ่อยเลยค่ะ ลองหาเวลาพักผ่อนและทำกิจกรรมที่ชอบนะคะ 🌸');
+            recommendations.push('อย่าลืมคุยกับคนที่รักหรือเพื่อนที่ไว้ใจได้นะคะ การแบ่งปันความรู้สึกช่วยได้มากเลย 💕');
+        } else if (overallMood === 'happy') {
+            recommendations.push('เก่งมากเลยค่ะ! คุณดูมีความสุขดีจัง เนโกะดีใจด้วย 🎉');
+            recommendations.push('ลองแชร์ความสุขให้คนรอบข้างด้วยนะคะ รอยยิ้มของคุณทำให้คนอื่นมีความสุขได้เลย 😊');
+        } else if (overallMood === 'love') {
+            recommendations.push('เนโกะเห็นว่าคุณเต็มไปด้วยความรักเลยค่ะ หวานมากๆ 💖');
+            recommendations.push('อย่าลืมดูแลตัวเองด้วยนะคะ ความรักที่ยั่งยืนต้องเริ่มจากรักตัวเองก่อน 🌟');
+        }
+
+        return recommendations;
+    }
+
+    // คำนวณแนวโน้มอารมณ์
+    _calculateMoodTrend(dailyMoods) {
+        const days = Object.keys(dailyMoods).sort();
+        if (days.length < 2) return 'stable';
+
+        // คำนวณคะแนนอารมณ์ (happy = 2, love = 1, neutral = 0, need_encouragement = -1, sad = -2)
+        const moodScores = days.map(day => {
+            const moods = dailyMoods[day];
+            return (moods.happy * 2) + (moods.love * 1) + (moods.neutral * 0) + 
+                   (moods.need_encouragement * -1) + (moods.sad * -2);
+        });
+
+        const firstHalf = moodScores.slice(0, Math.floor(moodScores.length / 2));
+        const secondHalf = moodScores.slice(Math.floor(moodScores.length / 2));
+
+        const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+        const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+
+        if (secondAvg > firstAvg + 0.5) return 'improving';
+        if (secondAvg < firstAvg - 0.5) return 'declining';
+        return 'stable';
     }
 }
 

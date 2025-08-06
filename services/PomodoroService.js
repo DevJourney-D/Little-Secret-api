@@ -9,8 +9,92 @@ class PomodoroService {
         );
     }
 
-    // เริ่มเซสชั่น Pomodoro ใหม่
-    async startSession(sessionData) {
+    // ============================================
+    // HELPER METHODS - ฟังก์ชันช่วยเหลือ
+    // ============================================
+
+    // สร้าง pagination object
+    _buildPagination(page = 1, limit = 20, total = 0) {
+        return {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasMore: (page * limit) < total
+        };
+    }
+
+    // ตรวจสอบสิทธิ์การเข้าถึงเซสชั่น
+    async _checkSessionAccess(sessionId, userId) {
+        try {
+            const { data: session } = await this.supabase
+                .from('pomodoro_sessions')
+                .select('user_id')
+                .eq('id', sessionId)
+                .single();
+
+            if (!session) {
+                throw new Error('ไม่พบเซสชั่น');
+            }
+
+            const hasAccess = session.user_id === userId;
+            const isOwner = session.user_id === userId;
+
+            return { hasAccess, isOwner, session };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // สร้าง query สำหรับกรองเซสชั่น
+    _buildSessionQuery(baseQuery, filters = {}) {
+        let query = baseQuery;
+
+        // กรองตามสถานะ
+        if (filters.completed !== undefined) {
+            query = query.eq('completed', filters.completed);
+        }
+
+        // กรองตามประเภทเซสชั่น
+        if (filters.session_type) {
+            query = query.eq('session_type', filters.session_type);
+        }
+
+        // กรองตามระดับโฟกัส
+        if (filters.min_focus_rating) {
+            query = query.gte('focus_rating', filters.min_focus_rating);
+        }
+        if (filters.max_focus_rating) {
+            query = query.lte('focus_rating', filters.max_focus_rating);
+        }
+
+        // กรองตามวันที่
+        if (filters.dateFrom) {
+            query = query.gte('started_at', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+            query = query.lte('started_at', filters.dateTo);
+        }
+
+        // ค้นหาในชื่องานและรายละเอียด
+        if (filters.search) {
+            query = query.or(`task_name.ilike.%${filters.search}%,notes.ilike.%${filters.search}%`);
+        }
+
+        // เรียงลำดับ
+        const sortBy = filters.sortBy || 'started_at';
+        const sortOrder = filters.sortOrder || 'desc';
+        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+        return query;
+    }
+
+    // ============================================
+    // CORE POMODORO OPERATIONS - การจัดการ Pomodoro พื้นฐาน
+    // ============================================
+
+    // สร้างเซสชั่น Pomodoro ใหม่ (CREATE)
+    async createPomodoroSession(sessionData) {
         try {
             const { data, error } = await this.supabase
                 .from('pomodoro_sessions')
@@ -20,7 +104,9 @@ class PomodoroService {
                     duration_minutes: sessionData.duration_minutes || 25,
                     break_duration: sessionData.break_duration || 5,
                     session_type: sessionData.session_type || 'focus',
-                    notes: sessionData.task_description || sessionData.notes
+                    notes: sessionData.notes || sessionData.task_description,
+                    focus_rating: sessionData.focus_rating || null,
+                    interruptions: sessionData.interruptions || 0
                 }])
                 .select(`
                     *,
@@ -31,33 +117,58 @@ class PomodoroService {
             if (error) throw error;
             return { success: true, data };
         } catch (error) {
+            console.error('createPomodoroSession error:', error);
             return { success: false, error: error.message };
         }
     }
 
-    // เสร็จสิ้นเซสชั่น
-    async completeSession(sessionId, userId, sessionData = {}) {
+    // ดึงเซสชั่นตาม ID (READ)
+    async getPomodoroSessionById(sessionId, userId) {
         try {
-            // ตรวจสอบว่าเป็นเจ้าของเซสชั่นหรือไม่
-            const { data: existingSession } = await this.supabase
-                .from('pomodoro_sessions')
-                .select('user_id, started_at')
-                .eq('id', sessionId)
-                .single();
-
-            if (!existingSession || existingSession.user_id !== userId) {
-                throw new Error('ไม่มีสิทธิ์แก้ไขเซสชั่นนี้');
+            const accessCheck = await this._checkSessionAccess(sessionId, userId);
+            
+            if (!accessCheck.hasAccess) {
+                throw new Error('ไม่มีสิทธิ์เข้าถึงเซสชั่นนี้');
             }
-
-            const updateData = {
-                completed: true,
-                completed_at: new Date().toISOString(),
-                notes: sessionData.productivity_notes || sessionData.notes
-            };
 
             const { data, error } = await this.supabase
                 .from('pomodoro_sessions')
-                .update(updateData)
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `)
+                .eq('id', sessionId)
+                .single();
+
+            if (error) throw error;
+            return { success: true, data };
+        } catch (error) {
+            console.error('getPomodoroSessionById error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // อัปเดตเซสชั่น (UPDATE)
+    async updatePomodoroSession(sessionId, userId, updateData) {
+        try {
+            const accessCheck = await this._checkSessionAccess(sessionId, userId);
+            
+            if (!accessCheck.isOwner) {
+                throw new Error('ไม่มีสิทธิ์แก้ไขเซสชั่นนี้');
+            }
+
+            // ลบข้อมูลที่ไม่ควรแก้ไข
+            const cleanData = { ...updateData };
+            delete cleanData.id;
+            delete cleanData.user_id;
+            delete cleanData.started_at;
+
+            const { data, error } = await this.supabase
+                .from('pomodoro_sessions')
+                .update({
+                    ...cleanData,
+                    updated_at: new Date().toISOString()
+                })
                 .eq('id', sessionId)
                 .eq('user_id', userId)
                 .select(`
@@ -69,22 +180,18 @@ class PomodoroService {
             if (error) throw error;
             return { success: true, data };
         } catch (error) {
+            console.error('updatePomodoroSession error:', error);
             return { success: false, error: error.message };
         }
     }
 
-    // ยกเลิกเซสชั่น
-    async cancelSession(sessionId, userId) {
+    // ลบเซสชั่น (DELETE)
+    async deletePomodoroSession(sessionId, userId) {
         try {
-            // ตรวจสอบว่าเป็นเจ้าของเซสชั่นหรือไม่
-            const { data: existingSession } = await this.supabase
-                .from('pomodoro_sessions')
-                .select('user_id')
-                .eq('id', sessionId)
-                .single();
-
-            if (!existingSession || existingSession.user_id !== userId) {
-                throw new Error('ไม่มีสิทธิ์ยกเลิกเซสชั่นนี้');
+            const accessCheck = await this._checkSessionAccess(sessionId, userId);
+            
+            if (!accessCheck.isOwner) {
+                throw new Error('ไม่มีสิทธิ์ลบเซสชั่นนี้');
             }
 
             const { error } = await this.supabase
@@ -94,10 +201,141 @@ class PomodoroService {
                 .eq('user_id', userId);
 
             if (error) throw error;
-            return { success: true };
+            return { success: true, data: { message: 'ลบเซสชั่นเรียบร้อยแล้ว' } };
         } catch (error) {
+            console.error('deletePomodoroSession error:', error);
             return { success: false, error: error.message };
         }
+    }
+
+    // ============================================
+    // LISTING & FILTERING - การแสดงรายการและกรอง
+    // ============================================
+
+    // แสดงรายการเซสชั่นของผู้ใช้ (LIST)
+    async listPomodoroSessions(userId, options = {}) {
+        try {
+            const {
+                page = 1,
+                limit = 20,
+                session_type = null,
+                completed = null,
+                min_focus_rating = null,
+                max_focus_rating = null,
+                search = '',
+                sortBy = 'started_at',
+                sortOrder = 'desc'
+            } = options;
+
+            const offset = (page - 1) * limit;
+
+            let query = this.supabase
+                .from('pomodoro_sessions')
+                .select(`
+                    *,
+                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                `, { count: 'exact' })
+                .eq('user_id', userId);
+
+            // ใช้ helper function สำหรับ filter
+            query = this._buildSessionQuery(query, { 
+                session_type, completed, min_focus_rating, max_focus_rating, 
+                search, sortBy, sortOrder 
+            });
+            query = query.range(offset, offset + limit - 1);
+
+            const { data, error, count } = await query;
+            if (error) throw error;
+
+            return {
+                success: true,
+                data: {
+                    sessions: data,
+                    pagination: this._buildPagination(page, limit, count)
+                }
+            };
+        } catch (error) {
+            console.error('listPomodoroSessions error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ดึงข้อมูลผู้ใช้และสถิติ Pomodoro (USER INFO)
+    async getUserPomodoroInfo(userId) {
+        try {
+            // ดึงข้อมูลผู้ใช้
+            const { data: user, error: userError } = await this.supabase
+                .from('users')
+                .select('id, first_name, last_name, display_name, email, avatar_url, created_at')
+                .eq('id', userId)
+                .single();
+
+            if (userError) throw userError;
+
+            // ดึงสถิติ
+            const statsResult = await this.getPomodoroStats(userId, 'week');
+            const stats = statsResult.success ? statsResult.data : {};
+
+            // ดึงเซสชั่นล่าสุด
+            const recentResult = await this.listPomodoroSessions(userId, { limit: 5 });
+            const recentSessions = recentResult.success ? recentResult.data.sessions : [];
+
+            // ดึงเซสชั่นปัจจุบัน
+            const currentResult = await this.getCurrentSession(userId);
+            const currentSession = currentResult.success ? currentResult.data : null;
+
+            // วิเคราะห์ประสิทธิภาพ
+            const bestSessionsResult = await this.getBestSessions(userId, 3);
+            const bestSessions = bestSessionsResult.success ? bestSessionsResult.data : [];
+
+            return {
+                success: true,
+                data: {
+                    user,
+                    stats,
+                    current_session: currentSession,
+                    recent_sessions: recentSessions,
+                    best_sessions: bestSessions,
+                    summary: {
+                        total_sessions: stats.total_sessions || 0,
+                        completed_sessions: stats.completed_sessions || 0,
+                        total_focus_time: stats.total_focus_time || 0,
+                        average_focus_rating: stats.average_focus_rating || 0,
+                        completion_rate: stats.total_sessions > 0 
+                            ? ((stats.completed_sessions / stats.total_sessions) * 100).toFixed(1)
+                            : 0
+                    }
+                }
+            };
+        } catch (error) {
+            console.error('getUserPomodoroInfo error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ============================================
+    // POMODORO SESSION MANAGEMENT - การจัดการเซสชั่น
+    // ============================================
+
+    // เริ่มเซสชั่น Pomodoro ใหม่ (Alias สำหรับ createPomodoroSession)
+    async startSession(sessionData) {
+        return await this.createPomodoroSession(sessionData);
+    }
+
+    // เสร็จสิ้นเซสชั่น (ใช้ updatePomodoroSession)
+    async completeSession(sessionId, userId, sessionData = {}) {
+        const updateData = {
+            completed: true,
+            completed_at: new Date().toISOString(),
+            notes: sessionData.productivity_notes || sessionData.notes,
+            focus_rating: sessionData.focus_rating
+        };
+        return await this.updatePomodoroSession(sessionId, userId, updateData);
+    }
+
+    // ยกเลิกเซสชั่น (ใช้ deletePomodoroSession)
+    async cancelSession(sessionId, userId) {
+        return await this.deletePomodoroSession(sessionId, userId);
     }
 
     // ดึงเซสชั่นปัจจุบัน (ที่ยังไม่เสร็จ)
@@ -121,94 +359,34 @@ class PomodoroService {
         }
     }
 
-    // ดึงประวัติเซสชั่น
+    // ดึงประวัติเซสชั่น (Alias สำหรับ listPomodoroSessions)
     async getSessionHistory(userId, page = 1, limit = 20, filters = {}) {
-        try {
-            const offset = (page - 1) * limit;
-
-            let query = this.supabase
-                .from('pomodoro_sessions')
-                .select(`
-                    *,
-                    user:user_id(id, first_name, last_name, display_name, avatar_url)
-                `, { count: 'exact' })
-                .eq('user_id', userId);
-
-            // กรองตามสถานะ
-            if (filters.completed !== undefined) {
-                query = query.eq('completed', filters.completed);
-            }
-
-            // กรองตามประเภทเซสชั่น
-            if (filters.session_type) {
-                query = query.eq('session_type', filters.session_type);
-            }
-
-            // กรองตามวันที่
-            if (filters.date_from) {
-                query = query.gte('started_at', filters.date_from);
-            }
-            if (filters.date_to) {
-                query = query.lte('started_at', filters.date_to);
-            }
-
-            const { data, error, count } = await query
-                .order('started_at', { ascending: false })
-                .range(offset, offset + limit - 1);
-
-            if (error) throw error;
-
-            return { 
-                success: true, 
-                data,
-                pagination: {
-                    page,
-                    limit,
-                    total: count,
-                    totalPages: Math.ceil(count / limit)
-                }
+        const result = await this.listPomodoroSessions(userId, { 
+            page, limit, 
+            ...filters,
+            dateFrom: filters.date_from,
+            dateTo: filters.date_to
+        });
+        
+        if (result.success) {
+            return {
+                success: true,
+                data: result.data.sessions,
+                pagination: result.data.pagination
             };
-        } catch (error) {
-            return { success: false, error: error.message };
         }
+        
+        return result;
     }
 
-    // อัปเดตข้อมูลเซสชั่น
+    // อัปเดตข้อมูลเซสชั่น (Alias สำหรับ updatePomodoroSession)
     async updateSession(sessionId, userId, updateData) {
-        try {
-            // ตรวจสอบว่าเป็นเจ้าของเซสชั่นหรือไม่
-            const { data: existingSession } = await this.supabase
-                .from('pomodoro_sessions')
-                .select('user_id')
-                .eq('id', sessionId)
-                .single();
-
-            if (!existingSession || existingSession.user_id !== userId) {
-                throw new Error('ไม่มีสิทธิ์แก้ไขเซสชั่นนี้');
-            }
-
-            // ลบข้อมูลที่ไม่ควรแก้ไข
-            delete updateData.id;
-            delete updateData.user_id;
-            delete updateData.started_at;
-
-            const { data, error } = await this.supabase
-                .from('pomodoro_sessions')
-                .update(updateData)
-                .eq('id', sessionId)
-                .eq('user_id', userId)
-                .select(`
-                    *,
-                    user:user_id(id, first_name, last_name, display_name, avatar_url)
-                `)
-                .single();
-
-            if (error) throw error;
-            return { success: true, data };
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
+        return await this.updatePomodoroSession(sessionId, userId, updateData);
     }
+
+    // ============================================
+    // ADVANCED FEATURES - ฟีเจอร์ขั้นสูง
+    // ============================================
 
     // เพิ่มการขัดจังหวะ
     async addInterruption(sessionId, userId) {
@@ -226,10 +404,11 @@ class PomodoroService {
 
             const newInterruptions = (session.interruptions || 0) + 1;
 
-            return await this.updateSession(sessionId, userId, { 
+            return await this.updatePomodoroSession(sessionId, userId, { 
                 interruptions: newInterruptions 
             });
         } catch (error) {
+            console.error('addInterruption error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -311,6 +490,7 @@ class PomodoroService {
 
             return { success: true, data: stats };
         } catch (error) {
+            console.error('getPomodoroStats error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -375,6 +555,7 @@ class PomodoroService {
 
             return { success: true, data: { trend, summary } };
         } catch (error) {
+            console.error('getProductivityTrend error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -398,50 +579,247 @@ class PomodoroService {
             if (error) throw error;
             return { success: true, data };
         } catch (error) {
+            console.error('getBestSessions error:', error);
             return { success: false, error: error.message };
         }
     }
 
-    // ค้นหาเซสชั่น
+    // ค้นหาเซสชั่น (ใช้ listPomodoroSessions)
     async searchSessions(userId, searchTerm, filters = {}) {
         try {
-            let query = this.supabase
+            const searchOptions = {
+                ...filters,
+                search: searchTerm,
+                limit: filters.limit || 50
+            };
+
+            return await this.listPomodoroSessions(userId, searchOptions);
+        } catch (error) {
+            console.error('searchSessions error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // ส่งออกข้อมูลเซสชั่น
+    async exportPomodoroSessions(userId, format = 'json') {
+        try {
+            const { data: sessions } = await this.supabase
                 .from('pomodoro_sessions')
                 .select(`
                     *,
-                    user:user_id(id, first_name, last_name, display_name, avatar_url)
+                    user:user_id(id, first_name, last_name, display_name)
                 `)
-                .eq('user_id', userId);
+                .eq('user_id', userId)
+                .order('started_at', { ascending: true });
 
-            // ค้นหาในชื่องานและรายละเอียด
-            if (searchTerm) {
-                query = query.or(`task_name.ilike.%${searchTerm}%,task_description.ilike.%${searchTerm}%,productivity_notes.ilike.%${searchTerm}%`);
+            if (format === 'csv') {
+                const csvData = sessions.map(session => ({
+                    วันที่: new Date(session.started_at).toLocaleDateString('th-TH'),
+                    เวลา: new Date(session.started_at).toLocaleTimeString('th-TH'),
+                    ชื่องาน: session.task_name,
+                    ประเภท: session.session_type,
+                    ระยะเวลา: session.duration_minutes,
+                    สถานะ: session.completed ? 'เสร็จสิ้น' : 'ยังไม่เสร็จ',
+                    คะแนนโฟกัส: session.focus_rating || '-',
+                    การขัดจังหวะ: session.interruptions || 0,
+                    หมายเหตุ: session.notes || ''
+                }));
+                
+                return { success: true, data: csvData, format: 'csv' };
             }
 
-            // กรองตามประเภทเซสชั่น
-            if (filters.session_type) {
-                query = query.eq('session_type', filters.session_type);
-            }
-
-            // กรองตามสถานะ
-            if (filters.completed !== undefined) {
-                query = query.eq('completed', filters.completed);
-            }
-
-            // กรองตามระดับโฟกัส
-            if (filters.min_focus_rating) {
-                query = query.gte('focus_rating', filters.min_focus_rating);
-            }
-
-            const { data, error } = await query
-                .order('started_at', { ascending: false })
-                .limit(50);
-
-            if (error) throw error;
-            return { success: true, data };
+            return { success: true, data: sessions, format: 'json' };
         } catch (error) {
+            console.error('exportPomodoroSessions error:', error);
             return { success: false, error: error.message };
         }
+    }
+
+    // วิเคราะห์ประสิทธิภาพรายวัน
+    async getDailyProductivity(userId, date) {
+        try {
+            const startDate = new Date(date);
+            startDate.setHours(0, 0, 0, 0);
+            const endDate = new Date(date);
+            endDate.setHours(23, 59, 59, 999);
+
+            const { data: sessions } = await this.supabase
+                .from('pomodoro_sessions')
+                .select('*')
+                .eq('user_id', userId)
+                .gte('started_at', startDate.toISOString())
+                .lte('started_at', endDate.toISOString())
+                .order('started_at', { ascending: true });
+
+            const productivity = {
+                date: date,
+                total_sessions: sessions?.length || 0,
+                completed_sessions: sessions?.filter(s => s.completed).length || 0,
+                total_focus_time: 0,
+                total_break_time: 0,
+                interruptions: 0,
+                session_types: {},
+                hourly_breakdown: {}
+            };
+
+            if (sessions && sessions.length > 0) {
+                sessions.forEach(session => {
+                    // เวลาโฟกัส
+                    if (session.completed) {
+                        productivity.total_focus_time += session.duration_minutes || 0;
+                        productivity.total_break_time += session.break_duration || 0;
+                    }
+
+                    // การขัดจังหวะ
+                    productivity.interruptions += session.interruptions || 0;
+
+                    // ประเภทเซสชั่น
+                    const type = session.session_type;
+                    productivity.session_types[type] = (productivity.session_types[type] || 0) + 1;
+
+                    // แยกตามชั่วโมง
+                    const hour = new Date(session.started_at).getHours();
+                    if (!productivity.hourly_breakdown[hour]) {
+                        productivity.hourly_breakdown[hour] = { sessions: 0, completed: 0 };
+                    }
+                    productivity.hourly_breakdown[hour].sessions++;
+                    if (session.completed) {
+                        productivity.hourly_breakdown[hour].completed++;
+                    }
+                });
+
+                // คำนวณอัตราส่วนความสำเร็จ
+                productivity.completion_rate = productivity.total_sessions > 0 
+                    ? (productivity.completed_sessions / productivity.total_sessions * 100).toFixed(1)
+                    : 0;
+            }
+
+            return { success: true, data: productivity };
+        } catch (error) {
+            console.error('getDailyProductivity error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // สร้างรายงานประสิทธิภาพรายสัปดาห์
+    async getWeeklyReport(userId, weekStartDate) {
+        try {
+            const startDate = new Date(weekStartDate);
+            const endDate = new Date(weekStartDate);
+            endDate.setDate(endDate.getDate() + 6);
+            endDate.setHours(23, 59, 59, 999);
+
+            const { data: sessions } = await this.supabase
+                .from('pomodoro_sessions')
+                .select('*')
+                .eq('user_id', userId)
+                .gte('started_at', startDate.toISOString())
+                .lte('started_at', endDate.toISOString())
+                .order('started_at', { ascending: true });
+
+            const report = {
+                week_start: weekStartDate,
+                week_end: endDate.toISOString().split('T')[0],
+                total_sessions: sessions?.length || 0,
+                completed_sessions: sessions?.filter(s => s.completed).length || 0,
+                total_focus_time: 0,
+                average_focus_rating: 0,
+                daily_breakdown: [],
+                most_productive_day: null,
+                improvement_suggestions: []
+            };
+
+            if (sessions && sessions.length > 0) {
+                // สถิติรายวัน
+                const dailyStats = {};
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date(startDate);
+                    date.setDate(date.getDate() + i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    dailyStats[dateStr] = { 
+                        date: dateStr, 
+                        sessions: 0, 
+                        completed: 0, 
+                        focus_time: 0,
+                        focus_ratings: []
+                    };
+                }
+
+                sessions.forEach(session => {
+                    const date = new Date(session.started_at).toISOString().split('T')[0];
+                    if (dailyStats[date]) {
+                        dailyStats[date].sessions++;
+                        if (session.completed) {
+                            dailyStats[date].completed++;
+                            dailyStats[date].focus_time += session.duration_minutes || 0;
+                            report.total_focus_time += session.duration_minutes || 0;
+                        }
+                        if (session.focus_rating) {
+                            dailyStats[date].focus_ratings.push(session.focus_rating);
+                        }
+                    }
+                });
+
+                // คำนวณค่าเฉลี่ยและหาวันที่มีประสิทธิภาพสูงสุด
+                let mostProductiveScore = 0;
+                report.daily_breakdown = Object.values(dailyStats).map(day => {
+                    day.avg_focus_rating = day.focus_ratings.length > 0 
+                        ? day.focus_ratings.reduce((a, b) => a + b, 0) / day.focus_ratings.length 
+                        : 0;
+                    
+                    const productivityScore = day.completed * day.avg_focus_rating;
+                    if (productivityScore > mostProductiveScore) {
+                        mostProductiveScore = productivityScore;
+                        report.most_productive_day = day.date;
+                    }
+                    
+                    delete day.focus_ratings;
+                    return day;
+                });
+
+                // คำนวณค่าเฉลี่ยโฟกัสรวม
+                const allRatings = sessions.filter(s => s.focus_rating).map(s => s.focus_rating);
+                if (allRatings.length > 0) {
+                    report.average_focus_rating = allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
+                }
+
+                // สร้างคำแนะนำ
+                report.improvement_suggestions = this._generateImprovementSuggestions(report);
+            }
+
+            return { success: true, data: report };
+        } catch (error) {
+            console.error('getWeeklyReport error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // สร้างคำแนะนำในการปรับปรุง
+    _generateImprovementSuggestions(report) {
+        const suggestions = [];
+
+        if (report.total_sessions < 10) {
+            suggestions.push('ลองเพิ่มจำนวนเซสชั่น Pomodoro ให้มากขึ้นเพื่อเพิ่มประสิทธิภาพ');
+        }
+
+        if (report.completed_sessions / report.total_sessions < 0.7) {
+            suggestions.push('ลองแบ่งงานให้เป็นชิ้นเล็กลงเพื่อให้เสร็จเซสชั่นได้ง่ายขึ้น');
+        }
+
+        if (report.average_focus_rating < 3) {
+            suggestions.push('ลองหาสภาพแวดล้อมที่เงียบสงบกว่านี้เพื่อเพิ่มการโฟกัส');
+        }
+
+        const lowProductiveDays = report.daily_breakdown.filter(day => day.completed < 2).length;
+        if (lowProductiveDays > 3) {
+            suggestions.push('ลองกำหนดเป้าหมายรายวันที่ชัดเจนมากขึ้น');
+        }
+
+        if (suggestions.length === 0) {
+            suggestions.push('คุณทำได้ดีมาก! ลองรักษาระดับนี้ไว้ต่อไป');
+        }
+
+        return suggestions;
     }
 }
 

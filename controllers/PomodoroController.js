@@ -1,4 +1,4 @@
-// Pomodoro Controller - API endpoints สำหรับระบบ Pomodoro Timer
+// Pomodoro Controller - API endpoints สำหรับระบบ Pomodoro Timer (ออกแบบใหม่เพื่อให้ใช้งานง่าย)
 const PomodoroService = require('../services/PomodoroService');
 const UserService = require('../services/UserService');
 
@@ -8,22 +8,42 @@ class PomodoroController {
         this.userService = new UserService();
     }
 
-    // เริ่มเซสชั่น Pomodoro ใหม่
-    async startSession(req, res) {
+    // ============================================
+    // BASIC POMODORO OPERATIONS - การใช้งานพื้นฐาน
+    // ============================================
+
+    // เริ่มเซสชั่น Pomodoro ใหม่ (สำหรับผู้ใช้ทั่วไป)
+    async start(req, res) {
         try {
-            const { userId } = req.params;
-            const sessionData = { ...req.body, user_id: userId };
+            const userId = req.userId || req.params.userId;
+            const { 
+                task_name = 'งานใหม่', 
+                duration = 25, 
+                session_type = 'focus' 
+            } = req.body;
             
-            const result = await this.pomodoroService.startSession(sessionData);
+            const sessionData = {
+                user_id: userId,
+                task_name,
+                duration_minutes: duration,
+                session_type
+            };
+            
+            const result = await this.pomodoroService.createPomodoroSession(sessionData);
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_started', {
-                    session_id: result.data.id,
-                    task_name: result.data.task_name,
-                    duration_minutes: result.data.duration_minutes,
-                    session_type: result.data.session_type
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'pomodoro_started', 
+                    'pomodoro_session', 
+                    result.data.id, 
+                    {
+                        task_name: result.data.task_name,
+                        duration_minutes: result.data.duration_minutes
+                    }, 
+                    req
+                );
 
                 res.status(201).json({
                     success: true,
@@ -39,32 +59,41 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการเริ่มเซสชั่น Pomodoro',
+                message: 'เกิดข้อผิดพลาดในการเริ่มเซสชั่น',
                 error: error.message
             });
         }
     }
 
     // เสร็จสิ้นเซสชั่น
-    async completeSession(req, res) {
+    async complete(req, res) {
         try {
-            const { userId, sessionId } = req.params;
+            const userId = req.userId || req.params.userId;
+            const { sessionId } = req.params;
+            const { focus_rating, notes } = req.body;
             
-            const result = await this.pomodoroService.completeSession(sessionId, userId, req.body);
+            const result = await this.pomodoroService.completeSession(sessionId, userId, {
+                focus_rating,
+                notes
+            });
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_completed', {
-                    session_id: sessionId,
-                    task_name: result.data.task_name,
-                    duration_minutes: result.data.duration_minutes,
-                    focus_rating: result.data.focus_rating,
-                    interruptions: result.data.interruptions
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'pomodoro_completed', 
+                    'pomodoro_session', 
+                    sessionId, 
+                    {
+                        focus_rating,
+                        notes: notes ? 'มีหมายเหตุ' : 'ไม่มีหมายเหตุ'
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,
-                    message: 'เสร็จสิ้นเซสชั่น Pomodoro สำเร็จ',
+                    message: 'เสร็จสิ้นเซสชั่นสำเร็จ',
                     data: result.data
                 });
             } else {
@@ -83,21 +112,27 @@ class PomodoroController {
     }
 
     // ยกเลิกเซสชั่น
-    async cancelSession(req, res) {
+    async cancel(req, res) {
         try {
-            const { userId, sessionId } = req.params;
+            const userId = req.userId || req.params.userId;
+            const { sessionId } = req.params;
             
             const result = await this.pomodoroService.cancelSession(sessionId, userId);
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_cancelled', {
-                    session_id: sessionId
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'pomodoro_cancelled', 
+                    'pomodoro_session', 
+                    sessionId, 
+                    {}, 
+                    req
+                );
 
                 res.json({
                     success: true,
-                    message: 'ยกเลิกเซสชั่น Pomodoro สำเร็จ'
+                    message: 'ยกเลิกเซสชั่นสำเร็จ'
                 });
             } else {
                 res.status(400).json({
@@ -114,10 +149,10 @@ class PomodoroController {
         }
     }
 
-    // ดึงเซสชั่นปัจจุบัน
-    async getCurrentSession(req, res) {
+    // ดึงเซสชั่นปัจจุบัน (ที่กำลังทำงาน)
+    async current(req, res) {
         try {
-            const { userId } = req.params;
+            const userId = req.userId || req.params.userId;
             
             const result = await this.pomodoroService.getCurrentSession(userId);
             
@@ -127,9 +162,9 @@ class PomodoroController {
                     data: result.data
                 });
             } else {
-                res.status(400).json({
+                res.status(404).json({
                     success: false,
-                    message: result.error
+                    message: 'ไม่มีเซสชั่นที่กำลังทำงาน'
                 });
             }
         } catch (error) {
@@ -141,25 +176,35 @@ class PomodoroController {
         }
     }
 
-    // ดึงประวัติเซสชั่น
-    async getSessionHistory(req, res) {
+    // ============================================
+    // SESSION MANAGEMENT - จัดการเซสชั่น
+    // ============================================
+
+    // ดึงรายการเซสชั่น (ง่าย ๆ)
+    async list(req, res) {
         try {
-            const { userId } = req.params;
-            const { page = 1, limit = 20, completed, session_type, date_from, date_to } = req.query;
+            const userId = req.userId || req.params.userId;
+            const { 
+                page = 1, 
+                limit = 10, 
+                completed = null,
+                type = null 
+            } = req.query;
+
+            const options = {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                session_type: type,
+                completed: completed !== null ? completed === 'true' : null
+            };
             
-            const filters = {};
-            if (completed !== undefined) filters.completed = completed === 'true';
-            if (session_type) filters.session_type = session_type;
-            if (date_from) filters.date_from = date_from;
-            if (date_to) filters.date_to = date_to;
-            
-            const result = await this.pomodoroService.getSessionHistory(userId, parseInt(page), parseInt(limit), filters);
+            const result = await this.pomodoroService.listPomodoroSessions(userId, options);
             
             if (result.success) {
                 res.json({
                     success: true,
-                    data: result.data,
-                    pagination: result.pagination
+                    data: result.data.sessions,
+                    pagination: result.data.pagination
                 });
             } else {
                 res.status(400).json({
@@ -170,29 +215,64 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการดึงประวัติเซสชั่น',
+                message: 'เกิดข้อผิดพลาดในการดึงรายการเซสชั่น',
                 error: error.message
             });
         }
     }
 
-    // อัปเดตข้อมูลเซสชั่น
-    async updateSession(req, res) {
+    // ดึงเซสชั่นตาม ID
+    async get(req, res) {
         try {
-            const { userId, sessionId } = req.params;
+            const userId = req.userId || req.params.userId;
+            const { sessionId } = req.params;
             
-            const result = await this.pomodoroService.updateSession(sessionId, userId, req.body);
+            const result = await this.pomodoroService.getPomodoroSessionById(sessionId, userId);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    data: result.data
+                });
+            } else {
+                res.status(404).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการดึงข้อมูลเซสชั่น',
+                error: error.message
+            });
+        }
+    }
+
+    // แก้ไขเซสชั่น
+    async update(req, res) {
+        try {
+            const userId = req.userId || req.params.userId;
+            const { sessionId } = req.params;
+            
+            const result = await this.pomodoroService.updatePomodoroSession(sessionId, userId, req.body);
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_updated', {
-                    session_id: sessionId,
-                    updated_fields: Object.keys(req.body)
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'pomodoro_updated', 
+                    'pomodoro_session', 
+                    sessionId, 
+                    {
+                        updated_fields: Object.keys(req.body)
+                    }, 
+                    req
+                );
 
                 res.json({
                     success: true,
-                    message: 'อัปเดตเซสชั่นสำเร็จ',
+                    message: 'แก้ไขเซสชั่นสำเร็จ',
                     data: result.data
                 });
             } else {
@@ -204,30 +284,34 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการอัปเดตเซสชั่น',
+                message: 'เกิดข้อผิดพลาดในการแก้ไขเซสชั่น',
                 error: error.message
             });
         }
     }
 
-    // เพิ่มการขัดจังหวะ
-    async addInterruption(req, res) {
+    // ลบเซสชั่น
+    async delete(req, res) {
         try {
-            const { userId, sessionId } = req.params;
+            const userId = req.userId || req.params.userId;
+            const { sessionId } = req.params;
             
-            const result = await this.pomodoroService.addInterruption(sessionId, userId);
+            const result = await this.pomodoroService.deletePomodoroSession(sessionId, userId);
             
             if (result.success) {
                 // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_interrupted', {
-                    session_id: sessionId,
-                    interruptions: result.data.interruptions
-                }, req);
+                await this.userService.logActivity(
+                    userId, 
+                    'pomodoro_deleted', 
+                    'pomodoro_session', 
+                    sessionId, 
+                    {}, 
+                    req
+                );
 
                 res.json({
                     success: true,
-                    message: 'บันทึกการขัดจังหวะสำเร็จ',
-                    data: result.data
+                    message: 'ลบเซสชั่นสำเร็จ'
                 });
             } else {
                 res.status(400).json({
@@ -238,16 +322,20 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการบันทึกการขัดจังหวะ',
+                message: 'เกิดข้อผิดพลาดในการลบเซสชั่น',
                 error: error.message
             });
         }
     }
 
-    // ดึงสถิติ Pomodoro
-    async getPomodoroStats(req, res) {
+    // ============================================
+    // STATISTICS & ANALYTICS - สถิติและการวิเคราะห์
+    // ============================================
+
+    // ดึงสถิติแบบง่าย
+    async stats(req, res) {
         try {
-            const { userId } = req.params;
+            const userId = req.userId || req.params.userId;
             const { period = 'week' } = req.query;
             
             const result = await this.pomodoroService.getPomodoroStats(userId, period);
@@ -266,16 +354,118 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการดึงสถิติ Pomodoro',
+                message: 'เกิดข้อผิดพลาดในการดึงสถิติ',
+                error: error.message
+            });
+        }
+    }
+
+    // ข้อมูลโดยรวมของผู้ใช้
+    async profile(req, res) {
+        try {
+            const userId = req.userId || req.params.userId;
+            
+            const result = await this.pomodoroService.getUserPomodoroInfo(userId);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    data: result.data
+                });
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการดึงข้อมูลโปรไฟล์',
+                error: error.message
+            });
+        }
+    }
+
+    // ============================================
+    // ADVANCED FEATURES - ฟีเจอร์ขั้นสูง
+    // ============================================
+
+    // เพิ่มการขัดจังหวะ
+    async addInterruption(req, res) {
+        try {
+            const userId = req.userId || req.params.userId;
+            const { sessionId } = req.params;
+            
+            const result = await this.pomodoroService.addInterruption(sessionId, userId);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    message: 'เพิ่มการขัดจังหวะแล้ว',
+                    data: result.data
+                });
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการเพิ่มการขัดจังหวะ',
+                error: error.message
+            });
+        }
+    }
+
+    // ค้นหาเซสชั่น
+    async search(req, res) {
+        try {
+            const userId = req.userId || req.params.userId;
+            const { q, type, page = 1, limit = 10 } = req.query;
+            
+            if (!q || q.trim().length < 2) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'กรุณาใส่คำค้นหาอย่างน้อย 2 ตัวอักษร'
+                });
+            }
+
+            const filters = {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                session_type: type
+            };
+            
+            const result = await this.pomodoroService.searchSessions(userId, q, filters);
+            
+            if (result.success) {
+                res.json({
+                    success: true,
+                    data: result.data.sessions,
+                    pagination: result.data.pagination
+                });
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการค้นหา',
                 error: error.message
             });
         }
     }
 
     // ดึงแนวโน้มประสิทธิภาพ
-    async getProductivityTrend(req, res) {
+    async trend(req, res) {
         try {
-            const { userId } = req.params;
+            const userId = req.userId || req.params.userId;
             const { days = 30 } = req.query;
             
             const result = await this.pomodoroService.getProductivityTrend(userId, parseInt(days));
@@ -294,17 +484,17 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการดึงแนวโน้มประสิทธิภาพ',
+                message: 'เกิดข้อผิดพลาดในการดึงแนวโน้ม',
                 error: error.message
             });
         }
     }
 
-    // ดึงเซสชั่นที่ดีที่สุด
-    async getBestSessions(req, res) {
+    // เซสชั่นที่ดีที่สุด
+    async best(req, res) {
         try {
-            const { userId } = req.params;
-            const { limit = 10 } = req.query;
+            const userId = req.userId || req.params.userId;
+            const { limit = 5 } = req.query;
             
             const result = await this.pomodoroService.getBestSessions(userId, parseInt(limit));
             
@@ -328,34 +518,15 @@ class PomodoroController {
         }
     }
 
-    // ค้นหาเซสชั่น
-    async searchSessions(req, res) {
+    // รายงานรายวัน
+    async dailyReport(req, res) {
         try {
-            const { userId } = req.params;
-            const { q, session_type, completed, min_focus_rating } = req.query;
+            const userId = req.userId || req.params.userId;
+            const { date = new Date().toISOString().split('T')[0] } = req.query;
             
-            if (!q || q.trim().length < 2) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'กรุณาใส่คำค้นหาอย่างน้อย 2 ตัวอักษร'
-                });
-            }
-
-            const filters = {};
-            if (session_type) filters.session_type = session_type;
-            if (completed !== undefined) filters.completed = completed === 'true';
-            if (min_focus_rating) filters.min_focus_rating = parseInt(min_focus_rating);
-            
-            const result = await this.pomodoroService.searchSessions(userId, q, filters);
+            const result = await this.pomodoroService.getDailyProductivity(userId, date);
             
             if (result.success) {
-                // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_searched', {
-                    search_term: q,
-                    filters: filters,
-                    results_count: result.data.length
-                }, req);
-
                 res.json({
                     success: true,
                     data: result.data
@@ -369,26 +540,32 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการค้นหาเซสชั่น',
+                message: 'เกิดข้อผิดพลาดในการสร้างรายงานรายวัน',
                 error: error.message
             });
         }
     }
 
-    // ดึงเซสชั่นตามประเภท
-    async getSessionsByType(req, res) {
+    // รายงานรายสัปดาห์
+    async weeklyReport(req, res) {
         try {
-            const { userId, sessionType } = req.params;
-            const { page = 1, limit = 20 } = req.query;
+            const userId = req.userId || req.params.userId;
+            const { week_start } = req.query;
             
-            const filters = { session_type: sessionType };
-            const result = await this.pomodoroService.getSessionHistory(userId, parseInt(page), parseInt(limit), filters);
+            // ถ้าไม่ได้ระบุ ใช้วันจันทร์ของสัปดาห์นี้
+            let weekStart = week_start;
+            if (!weekStart) {
+                const today = new Date();
+                const monday = new Date(today.setDate(today.getDate() - today.getDay() + 1));
+                weekStart = monday.toISOString().split('T')[0];
+            }
+            
+            const result = await this.pomodoroService.getWeeklyReport(userId, weekStart);
             
             if (result.success) {
                 res.json({
                     success: true,
-                    data: result.data,
-                    pagination: result.pagination
+                    data: result.data
                 });
             } else {
                 res.status(400).json({
@@ -399,41 +576,71 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการดึงเซสชั่นตามประเภท',
+                message: 'เกิดข้อผิดพลาดในการสร้างรายงานรายสัปดาห์',
                 error: error.message
             });
         }
     }
 
-    // Export เซสชั่นเป็น JSON
-    async exportSessions(req, res) {
+    // ส่งออกข้อมูล
+    async export(req, res) {
         try {
-            const { userId } = req.params;
-            const { format = 'json', completed } = req.query;
+            const userId = req.userId || req.params.userId;
+            const { format = 'json' } = req.query;
             
-            const filters = {};
-            if (completed !== undefined) filters.completed = completed === 'true';
-            
-            // ดึงเซสชั่นทั้งหมด
-            const result = await this.pomodoroService.getSessionHistory(userId, 1, 1000, filters);
+            const result = await this.pomodoroService.exportPomodoroSessions(userId, format);
             
             if (result.success) {
-                // บันทึก activity log
-                await this.userService.logActivity(userId, 'pomodoro_exported', {
-                    format: format,
-                    count: result.data.length,
-                    filters: filters
-                }, req);
-
-                res.setHeader('Content-Type', 'application/json');
-                res.setHeader('Content-Disposition', `attachment; filename="pomodoro_sessions_${userId}_${new Date().toISOString().split('T')[0]}.json"`);
+                if (format === 'csv') {
+                    res.setHeader('Content-Type', 'text/csv');
+                    res.setHeader('Content-Disposition', 'attachment; filename=pomodoro_sessions.csv');
+                } else {
+                    res.setHeader('Content-Type', 'application/json');
+                    res.setHeader('Content-Disposition', 'attachment; filename=pomodoro_sessions.json');
+                }
                 
                 res.json({
                     success: true,
-                    export_date: new Date().toISOString(),
-                    user_id: userId,
-                    total_sessions: result.data.length,
-                    filters: filters,
+                    data: result.data,
+                    format: result.format
+                });
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: result.error
+                });
+            }
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: 'เกิดข้อผิดพลาดในการส่งออกข้อมูล',
+                error: error.message
+            });
+        }
+    }
+
+    // ============================================
+    // QUICK ACTIONS - การใช้งานด่วน
+    // ============================================
+
+    // เริ่มเซสชั่นด่วน (ใช้ค่าเริ่มต้น)
+    async quickStart(req, res) {
+        try {
+            const userId = req.userId || req.params.userId;
+            
+            const sessionData = {
+                user_id: userId,
+                task_name: 'เซสชั่นด่วน',
+                duration_minutes: 25,
+                session_type: 'focus'
+            };
+            
+            const result = await this.pomodoroService.createPomodoroSession(sessionData);
+            
+            if (result.success) {
+                res.status(201).json({
+                    success: true,
+                    message: 'เริ่มเซสชั่นด่วนสำเร็จ',
                     data: result.data
                 });
             } else {
@@ -445,80 +652,36 @@ class PomodoroController {
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการ Export เซสชั่น',
+                message: 'เกิดข้อผิดพลาดในการเริ่มเซสชั่นด่วน',
                 error: error.message
             });
         }
     }
 
-    // สรุป Pomodoro สำหรับ Dashboard
-    async getPomodoroSummary(req, res) {
+    // สรุปวันนี้
+    async today(req, res) {
         try {
-            const { userId } = req.params;
-            const { period = 'week' } = req.query;
+            const userId = req.userId || req.params.userId;
+            const today = new Date().toISOString().split('T')[0];
             
-            // ดึงข้อมูลพร้อมกัน
-            const [statsResult, currentResult, trendResult] = await Promise.all([
-                this.pomodoroService.getPomodoroStats(userId, period),
-                this.pomodoroService.getCurrentSession(userId),
-                this.pomodoroService.getProductivityTrend(userId, 7)
-            ]);
+            const result = await this.pomodoroService.getDailyProductivity(userId, today);
             
-            if (statsResult.success && currentResult.success && trendResult.success) {
+            if (result.success) {
                 res.json({
                     success: true,
-                    data: {
-                        stats: statsResult.data,
-                        current_session: currentResult.data,
-                        trend: trendResult.data,
-                        period: period
-                    }
+                    message: 'สรุปประสิทธิภาพวันนี้',
+                    data: result.data
                 });
             } else {
                 res.status(400).json({
                     success: false,
-                    message: 'เกิดข้อผิดพลาดในการดึงข้อมูลสรุป'
+                    message: result.error
                 });
             }
         } catch (error) {
             res.status(500).json({
                 success: false,
-                message: 'เกิดข้อผิดพลาดในการดึงข้อมูลสรุป Pomodoro',
-                error: error.message
-            });
-        }
-    }
-
-    // สร้าง Preset การตั้งค่า Pomodoro
-    async createPreset(req, res) {
-        try {
-            const { userId } = req.params;
-            const { name, work_duration, short_break, long_break, cycles_before_long_break } = req.body;
-            
-            // บันทึกลงใน user preferences หรือตารางแยก
-            const presetData = {
-                name,
-                work_duration: work_duration || 25,
-                short_break: short_break || 5,
-                long_break: long_break || 15,
-                cycles_before_long_break: cycles_before_long_break || 4
-            };
-
-            // บันทึก activity log
-            await this.userService.logActivity(userId, 'pomodoro_preset_created', {
-                preset_name: name,
-                settings: presetData
-            }, req);
-
-            res.status(201).json({
-                success: true,
-                message: 'สร้าง Preset การตั้งค่า Pomodoro สำเร็จ',
-                data: presetData
-            });
-        } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: 'เกิดข้อผิดพลาดในการสร้าง Preset',
+                message: 'เกิดข้อผิดพลาดในการสรุปวันนี้',
                 error: error.message
             });
         }

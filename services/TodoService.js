@@ -9,6 +9,107 @@ class TodoService {
         );
     }
 
+    // ============================================
+    // HELPER METHODS - ฟังก์ชันช่วยเหลือ
+    // ============================================
+
+    // สร้าง pagination object
+    _buildPagination(page = 1, limit = 20, total = 0) {
+        return {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasMore: (page * limit) < total
+        };
+    }
+
+    // ตรวจสอบสิทธิ์การเข้าถึง Todo
+    async _checkTodoAccess(todoId, userId) {
+        try {
+            const { data: todo } = await this.supabase
+                .from('todos')
+                .select('user_id, shared_with_partner, assigned_to_partner')
+                .eq('id', todoId)
+                .single();
+
+            if (!todo) {
+                throw new Error('ไม่พบรายการ Todo');
+            }
+
+            // หา partner_id
+            const { data: user } = await this.supabase
+                .from('users')
+                .select('partner_id')
+                .eq('id', userId)
+                .single();
+
+            const isOwner = todo.user_id === userId;
+            const isPartner = user?.partner_id && todo.user_id === user.partner_id;
+            const hasSharedAccess = todo.shared_with_partner && isPartner;
+            const isAssignedPartner = todo.assigned_to_partner && isPartner;
+            const hasAccess = isOwner || hasSharedAccess || isAssignedPartner;
+
+            return { hasAccess, isOwner, isPartner, todo };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // สร้าง query สำหรับกรอง Todo
+    _buildTodoQuery(baseQuery, filters = {}) {
+        let query = baseQuery;
+
+        // กรองตามสถานะ
+        if (filters.status) {
+            query = query.eq('status', filters.status);
+        }
+
+        // กรองตามความสำคัญ
+        if (filters.priority) {
+            query = query.eq('priority', filters.priority);
+        }
+
+        // กรองตามหมวดหมู่
+        if (filters.category) {
+            query = query.eq('category', filters.category);
+        }
+
+        // กรองตามการเสร็จสิ้น
+        if (filters.completed !== undefined) {
+            query = query.eq('completed', filters.completed);
+        }
+
+        // กรองตามวันครบกำหนด
+        if (filters.due_date) {
+            query = query.eq('due_date', filters.due_date);
+        }
+
+        // ช่วงวันที่
+        if (filters.dateFrom) {
+            query = query.gte('created_at', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+            query = query.lte('created_at', filters.dateTo);
+        }
+
+        // ค้นหาในชื่อเรื่องและรายละเอียด
+        if (filters.search) {
+            query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
+        }
+
+        // เรียงลำดับ
+        const sortBy = filters.sortBy || 'created_at';
+        const sortOrder = filters.sortOrder || 'desc';
+        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+        return query;
+    }
+
+    // ============================================
+    // CORE TODO OPERATIONS - การจัดการ Todo พื้นฐาน
+    // ============================================
+
     // สร้างรายการใหม่
     async createTodo(todoData) {
         try {

@@ -9,6 +9,77 @@ class ChatService {
         );
     }
 
+    // ============================================
+    // HELPER METHODS - ฟังก์ชันช่วยเหลือ
+    // ============================================
+
+    // สร้าง pagination object
+    _buildPagination(page = 1, limit = 50, total = 0) {
+        return {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages: Math.ceil(total / limit),
+            hasMore: (page * limit) < total
+        };
+    }
+
+    // ตรวจสอบสิทธิ์การเข้าถึงข้อความ
+    async _checkMessageAccess(messageId, userId) {
+        try {
+            const { data: message } = await this.supabase
+                .from('chat_messages')
+                .select('sender_id, receiver_id')
+                .eq('id', messageId)
+                .single();
+
+            if (!message) {
+                throw new Error('ไม่พบข้อความ');
+            }
+
+            const hasAccess = message.sender_id === userId || message.receiver_id === userId;
+            const isOwner = message.sender_id === userId;
+
+            return { hasAccess, isOwner, message };
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // สร้าง query สำหรับกรองข้อความ
+    _buildMessageQuery(baseQuery, filters = {}) {
+        let query = baseQuery;
+
+        // กรองตามประเภทข้อความ
+        if (filters.messageType) {
+            query = query.eq('message_type', filters.messageType);
+        }
+
+        // กรองตามวันที่
+        if (filters.dateFrom) {
+            query = query.gte('created_at', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+            query = query.lte('created_at', filters.dateTo);
+        }
+
+        // ค้นหาในเนื้อหา
+        if (filters.search) {
+            query = query.ilike('message', `%${filters.search}%`);
+        }
+
+        // เรียงลำดับ
+        const sortBy = filters.sortBy || 'created_at';
+        const sortOrder = filters.sortOrder || 'desc';
+        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+        return query;
+    }
+
+    // ============================================
+    // CORE CHAT OPERATIONS - การจัดการแชทพื้นฐาน
+    // ============================================
+
     // ส่งข้อความ
     async sendMessage(messageData) {
         try {
